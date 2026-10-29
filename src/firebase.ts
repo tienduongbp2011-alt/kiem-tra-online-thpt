@@ -1,5 +1,12 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import {
+  initializeAuth,
+  browserSessionPersistence,
+  browserPopupRedirectResolver,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+} from 'firebase/auth';
 import {
   getFirestore,
   doc,
@@ -11,9 +18,61 @@ import {
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
+/**
+ * Purge any expired or near-expired Firebase Auth tokens from Web Storage
+ * and legacy IndexedDB before initializing Firebase Auth so that stale tokens
+ * never trigger a failing securetoken.googleapis.com refresh request that blocks Firestore.
+ */
+function purgeExpiredCachedAuthTokens(): void {
+  if (typeof window === 'undefined') return;
+  const nowWithBuffer = Date.now() + 5 * 60 * 1000; // 5 minutes buffer
+
+  const cleanStorage = (storage: Storage) => {
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < storage.length; i++) {
+        const key = storage.key(i);
+        if (key && key.startsWith('firebase:authUser:')) {
+          const raw = storage.getItem(key);
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw);
+              const exp = Number(parsed?.stsTokenManager?.expirationTime || 0);
+              if (!exp || exp <= nowWithBuffer) {
+                keysToRemove.push(key);
+              }
+            } catch {
+              keysToRemove.push(key);
+            }
+          }
+        }
+      }
+      keysToRemove.forEach((k) => storage.removeItem(k));
+    } catch {
+      // Ignore storage access errors
+    }
+  };
+
+  cleanStorage(window.sessionStorage);
+  cleanStorage(window.localStorage);
+
+  try {
+    if (window.indexedDB && typeof window.indexedDB.deleteDatabase === 'function') {
+      window.indexedDB.deleteDatabase('firebaseLocalStorageDb');
+    }
+  } catch {
+    // Ignore IndexedDB cleanup errors
+  }
+}
+
+purgeExpiredCachedAuthTokens();
+
 const app = initializeApp(firebaseConfig);
+export const auth = initializeAuth(app, {
+  persistence: browserSessionPersistence,
+  popupRedirectResolver: browserPopupRedirectResolver,
+});
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
 export const TEACHER_ADMIN_EMAIL = 'tienduongbp2011@gmail.com';
@@ -70,15 +129,13 @@ export function handleFirestoreError(
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Validate connection on boot as required by firebase-integration-rpc
+// Validate connection on boot after auth state is ready
 export async function testFirestoreConnection(): Promise<boolean> {
   try {
+    await auth.authStateReady();
     await getDocFromServer(doc(db, 'test', 'connection'));
     return true;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error('Please check your Firebase configuration.');
-    }
+  } catch {
     return false;
   }
 }

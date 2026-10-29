@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import {
   LayoutDashboard,
   Users,
@@ -15,26 +13,26 @@ import {
   Bell,
   ChevronLeft,
   ChevronRight,
-  LogIn,
-  LogOut,
   PlayCircle,
   Cloud,
   AlertCircle,
   Menu,
   X,
+  RefreshCw,
+  Copy,
+  CheckCircle2,
+  ExternalLink,
+  Terminal,
 } from 'lucide-react';
 import {
-  auth,
-  db,
-  loginWithGoogle,
-  logoutFirebase,
-  OperationType,
-  handleFirestoreError,
-  safeCreateOrSetDoc,
-  safeUpdateDoc,
-  safeDeleteDoc,
-  TEACHER_ADMIN_EMAIL,
-} from './firebase';
+  supabase,
+  SUPABASE_PROJECT_URL,
+  SUPABASE_SETUP_SQL,
+  checkSupabaseStatus,
+  supabaseFetchAll,
+  supabaseUpsertDoc,
+  supabaseDeleteDoc,
+} from './supabaseClient';
 import {
   Assignment,
   AuditLogItem,
@@ -92,15 +90,21 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Auth & Role State
-  const [fbUser, setFbUser] = useState<FirebaseUser | null>(null);
-  const [authReady, setAuthReady] = useState(false);
+  // Role State
   const [roleViewMode, setRoleViewMode] = useState<'teacher' | 'student'>('teacher');
+
+  // Supabase Connection & Schema Readiness State
+  const [sbConnected, setSbConnected] = useState<boolean>(false);
+  const [sbTablesReady, setSbTablesReady] = useState<boolean>(false);
+  const [sbChecking, setSbChecking] = useState<boolean>(true);
+  const [sbStatusMsg, setSbStatusMsg] = useState<string>('Đang kết nối tới cơ sở dữ liệu Supabase...');
+  const [showSqlModal, setShowSqlModal] = useState<boolean>(false);
+  const [copiedSql, setCopiedSql] = useState<boolean>(false);
 
   // Notifications dropdown
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
 
-  // Cloud Firestore State (Real Data)
+  // Supabase Real Data State
   const [cloudClasses, setCloudClasses] = useState<ClassRoom[]>([]);
   const [cloudStudents, setCloudStudents] = useState<Student[]>([]);
   const [cloudQuestions, setCloudQuestions] = useState<Question[]>([]);
@@ -116,13 +120,13 @@ export default function App() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([
     {
       id: 'notif_1',
-      title: 'Hệ thống Tin học THPT Thanh Hòa sẵn sàng',
-      message: 'Cơ sở dữ liệu Cloud Firestore và bộ quy tắc bảo mật đã được kích hoạt.',
+      title: 'Hệ thống Tin học THPT Thanh Hòa đã kết nối Supabase',
+      message: `Đang sử dụng cơ sở dữ liệu PostgreSQL trên Supabase (${SUPABASE_PROJECT_URL}).`,
       targetRole: 'all',
       isRead: false,
       ownerId: 'system',
-      createdAt: '2026-10-23T08:00:00.000Z',
-      updatedAt: '2026-10-23T08:00:00.000Z',
+      createdAt: '2026-10-28T08:00:00.000Z',
+      updatedAt: '2026-10-28T08:00:00.000Z',
     },
   ]);
 
@@ -130,202 +134,102 @@ export default function App() {
   const [activeStudentIdForPortal, setActiveStudentIdForPortal] = useState<string>('');
   const [appAlert, setAppAlert] = useState<{ type: 'info' | 'error'; text: string } | null>(null);
 
-  // Track Firebase Auth
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setFbUser(user);
-      setAuthReady(true);
-      if (user) {
-        const isTeacherEmail =
-          user.email?.toLowerCase() === TEACHER_ADMIN_EMAIL.toLowerCase();
-        setRoleViewMode(isTeacherEmail ? 'teacher' : 'student');
-      }
-    });
-    return () => unsub();
-  }, []);
+  const loadAllDataFromSupabase = useCallback(async () => {
+    setSbChecking(true);
+    const status = await checkSupabaseStatus();
+    setSbConnected(status.connected);
+    setSbTablesReady(status.tablesReady);
 
-  const isVerifiedTeacherUser =
-    Boolean(fbUser) &&
-    fbUser?.email?.toLowerCase() === TEACHER_ADMIN_EMAIL.toLowerCase() &&
-    fbUser?.emailVerified === true;
-
-  // Attach Firestore real-time listeners when authenticated
-  useEffect(() => {
-    if (!authReady || !fbUser) return;
-
-    const unsubs: (() => void)[] = [];
-
-    if (isVerifiedTeacherUser) {
-      unsubs.push(
-        onSnapshot(
-          collection(db, 'classes'),
-          (snap) => {
-            setCloudClasses(
-              snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ClassRoom, 'id'>) }))
-            );
-          },
-          (err) => handleFirestoreError(err, OperationType.LIST, 'classes')
-        )
-      );
-
-      unsubs.push(
-        onSnapshot(
-          collection(db, 'students'),
-          (snap) => {
-            setCloudStudents(
-              snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Student, 'id'>) }))
-            );
-          },
-          (err) => handleFirestoreError(err, OperationType.LIST, 'students')
-        )
-      );
-
-      unsubs.push(
-        onSnapshot(
-          collection(db, 'question_bank'),
-          (snap) => {
-            setCloudQuestions(
-              snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Question, 'id'>) }))
-            );
-          },
-          (err) => handleFirestoreError(err, OperationType.LIST, 'question_bank')
-        )
-      );
-
-      unsubs.push(
-        onSnapshot(
-          collection(db, 'exams'),
-          (snap) => {
-            setCloudExams(
-              snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Exam, 'id'>) }))
-            );
-          },
-          (err) => handleFirestoreError(err, OperationType.LIST, 'exams')
-        )
-      );
-
-      unsubs.push(
-        onSnapshot(
-          collection(db, 'exam_answer_keys'),
-          (snap) => {
-            setCloudAnswerKeys(
-              snap.docs.map((d) => ({ ...(d.data() as ExamAnswerKey), examId: d.id }))
-            );
-          },
-          (err) => handleFirestoreError(err, OperationType.LIST, 'exam_answer_keys')
-        )
-      );
-
-      unsubs.push(
-        onSnapshot(
-          collection(db, 'assignments'),
-          (snap) => {
-            setCloudAssignments(
-              snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Assignment, 'id'>) }))
-            );
-          },
-          (err) => handleFirestoreError(err, OperationType.LIST, 'assignments')
-        )
-      );
-
-      unsubs.push(
-        onSnapshot(
-          collection(db, 'submissions'),
-          (snap) => {
-            setCloudSubmissions(
-              snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Submission, 'id'>) }))
-            );
-          },
-          (err) => handleFirestoreError(err, OperationType.LIST, 'submissions')
-        )
-      );
-
-      unsubs.push(
-        onSnapshot(
-          collection(db, 'learning_plans'),
-          (snap) => {
-            setCloudPlans(
-              snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<LearningPlan, 'id'>) }))
-            );
-          },
-          (err) => handleFirestoreError(err, OperationType.LIST, 'learning_plans')
-        )
-      );
-
-      unsubs.push(
-        onSnapshot(
-          collection(db, 'learning_resources'),
-          (snap) => {
-            setCloudResources(
-              snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<LearningResource, 'id'>) }))
-            );
-          },
-          (err) => handleFirestoreError(err, OperationType.LIST, 'learning_resources')
-        )
-      );
-
-      unsubs.push(
-        onSnapshot(
-          collection(db, 'audit_logs'),
-          (snap) => {
-            const list = snap.docs.map((d) => ({
-              id: d.id,
-              ...(d.data() as Omit<AuditLogItem, 'id'>),
-            }));
-            list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-            setCloudLogs(list);
-          },
-          (err) => handleFirestoreError(err, OperationType.LIST, 'audit_logs')
-        )
-      );
-    } else {
-      // Student-scoped queries respecting Pillar 8 (Secure List Queries)
-      unsubs.push(
-        onSnapshot(
-          query(collection(db, 'assignments'), where('status', '==', 'open')),
-          (snap) => {
-            setCloudAssignments(
-              snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Assignment, 'id'>) }))
-            );
-          },
-          (err) => handleFirestoreError(err, OperationType.LIST, 'assignments')
-        )
-      );
-
-      unsubs.push(
-        onSnapshot(
-          query(collection(db, 'submissions'), where('studentUid', '==', fbUser.uid)),
-          (snap) => {
-            setCloudSubmissions(
-              snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Submission, 'id'>) }))
-            );
-          },
-          (err) => handleFirestoreError(err, OperationType.LIST, 'submissions')
-        )
-      );
-
-      unsubs.push(
-        onSnapshot(
-          query(
-            collection(db, 'learning_resources'),
-            where('accessLevel', '==', 'public_students')
-          ),
-          (snap) => {
-            setCloudResources(
-              snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<LearningResource, 'id'>) }))
-            );
-          },
-          (err) => handleFirestoreError(err, OperationType.LIST, 'learning_resources')
-        )
-      );
+    if (!status.connected) {
+      setSbStatusMsg(status.errorMessage || 'Không thể kết nối tới Supabase.');
+      setSbChecking(false);
+      return;
     }
 
-    return () => {
-      unsubs.forEach((u) => u());
-    };
-  }, [authReady, fbUser, isVerifiedTeacherUser]);
+    if (!status.tablesReady) {
+      setSbStatusMsg(
+        status.errorMessage ||
+          'Đã kết nối Supabase nhưng chưa tạo bảng dữ liệu. Nhấn "Khởi tạo Bảng SQL Supabase" để thiết lập.'
+      );
+      setShowSqlModal(true);
+      setSbChecking(false);
+      return;
+    }
 
-  // Active Datasets (Real Cloud Firestore Data)
+    try {
+      const [
+        classesList,
+        studentsList,
+        questionsList,
+        examsList,
+        keysList,
+        assignmentsList,
+        submissionsList,
+        plansList,
+        resourcesList,
+        logsList,
+        settingsList,
+      ] = await Promise.all([
+        supabaseFetchAll<ClassRoom>('classes'),
+        supabaseFetchAll<Student>('students'),
+        supabaseFetchAll<Question>('question_bank'),
+        supabaseFetchAll<Exam>('exams'),
+        supabaseFetchAll<ExamAnswerKey>('exam_answer_keys'),
+        supabaseFetchAll<Assignment>('assignments'),
+        supabaseFetchAll<Submission>('submissions'),
+        supabaseFetchAll<LearningPlan>('learning_plans'),
+        supabaseFetchAll<LearningResource>('learning_resources'),
+        supabaseFetchAll<AuditLogItem>('audit_logs'),
+        supabaseFetchAll<SystemSetting>('system_settings'),
+      ]);
+
+      setCloudClasses(classesList);
+      setCloudStudents(studentsList);
+      setCloudQuestions(questionsList);
+      setCloudExams(examsList);
+      setCloudAnswerKeys(
+        keysList.map((k) => ({
+          ...k,
+          examId: k.examId || (k as unknown as { id: string }).id,
+        }))
+      );
+      setCloudAssignments(assignmentsList);
+      setCloudSubmissions(submissionsList);
+      setCloudPlans(plansList);
+      setCloudResources(resourcesList);
+      setCloudLogs(logsList.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
+      if (settingsList.length > 0) {
+        setCloudSettings(settingsList[0]);
+      }
+      setSbStatusMsg(
+        `Đã kết nối đồng bộ trực tiếp với Supabase PostgreSQL (${SUPABASE_PROJECT_URL})`
+      );
+    } catch (err) {
+      setAppAlert({
+        type: 'error',
+        text: `Lỗi tải dữ liệu từ Supabase: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    } finally {
+      setSbChecking(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAllDataFromSupabase();
+
+    // Subscribe to Supabase Realtime changes on public schema
+    const channel = supabase
+      .channel('tinhoc_thpt_thanhhoa_changes')
+      .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+        loadAllDataFromSupabase();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadAllDataFromSupabase]);
+
   const activeClasses = cloudClasses;
   const activeStudents = cloudStudents;
   const activeQuestions = cloudQuestions;
@@ -338,178 +242,224 @@ export default function App() {
   const activeLogs = cloudLogs;
 
   const isTeacherOrAdmin = roleViewMode === 'teacher';
+  const defaultOwnerId = 'teacher_nguyen_tien_duong';
 
-  const recordAudit = useCallback(
-    async (action: string, module: string, details?: string) => {
-      if (!fbUser) return;
-      const now = new Date().toISOString();
-      const entry: AuditLogItem = {
-        id: `log_${Date.now()}`,
-        action: action.slice(0, 140),
-        module: module.slice(0, 75),
-        actorName: fbUser.displayName || 'Nguyễn Tiến Dương',
-        actorUid: fbUser.uid,
-        details: details?.slice(0, 950),
-        createdAt: now,
-      };
-      await safeCreateOrSetDoc(
-        'audit_logs',
-        entry.id,
-        entry as unknown as Record<string, unknown>,
-        OperationType.CREATE
-      );
-    },
-    [fbUser]
-  );
-
-  // =========================================================================
-  // CRUD Handlers for Real Cloud Firestore Data
-  // =========================================================================
-  const ensureCanWrite = (): boolean => {
-    if (!fbUser) {
+  const ensureSupabaseReady = (): boolean => {
+    if (!sbTablesReady) {
+      setShowSqlModal(true);
       setAppAlert({
         type: 'error',
-        text: 'Chưa đăng nhập Cloud Firestore! Vui lòng nhấn "Đăng nhập Google" ở góc trên bên phải để lưu dữ liệu vào hệ thống.',
+        text: 'Các bảng dữ liệu trên Supabase chưa được khởi tạo. Vui lòng sao chép mã lệnh SQL trong cửa sổ hướng dẫn và nhấn RUN trong Supabase SQL Editor.',
       });
       return false;
     }
     return true;
   };
 
+  const recordAudit = useCallback(
+    async (action: string, module: string, details?: string) => {
+      if (!sbTablesReady) return;
+      const now = new Date().toISOString();
+      const entry: AuditLogItem = {
+        id: `log_${Date.now()}`,
+        action: action.slice(0, 140),
+        module: module.slice(0, 75),
+        actorName: 'Nguyễn Tiến Dương',
+        actorUid: defaultOwnerId,
+        details: details?.slice(0, 950),
+        createdAt: now,
+      };
+      setCloudLogs((prev) => [entry, ...prev]);
+      try {
+        await supabaseUpsertDoc(
+          'audit_logs',
+          entry.id,
+          entry as unknown as Record<string, unknown>
+        );
+      } catch {
+        // Ignore non-critical audit log errors
+      }
+    },
+    [sbTablesReady]
+  );
+
+  // =========================================================================
+  // CRUD Handlers for Supabase PostgreSQL
+  // =========================================================================
   const handleSaveClass = async (
     clsData: Omit<ClassRoom, 'id' | 'createdAt' | 'updatedAt' | 'ownerId'>,
     editId?: string
   ) => {
-    if (!ensureCanWrite()) return;
+    if (!ensureSupabaseReady()) return;
     const now = new Date().toISOString();
     const id = editId || `class_${Date.now()}`;
+    const existing = cloudClasses.find((c) => c.id === editId);
     const record: ClassRoom = {
       ...clsData,
       id,
-      ownerId: fbUser!.uid,
-      createdAt: now,
+      ownerId: existing?.ownerId || defaultOwnerId,
+      createdAt: existing?.createdAt || now,
       updatedAt: now,
     };
 
-    if (editId) {
-      const existing = cloudClasses.find((c) => c.id === editId);
-      await safeUpdateDoc('classes', editId, {
-        ...record,
-        ownerId: existing?.ownerId || fbUser!.uid,
-        createdAt: existing?.createdAt || now,
+    try {
+      await supabaseUpsertDoc('classes', id, record as unknown as Record<string, unknown>);
+      setCloudClasses((prev) =>
+        editId ? prev.map((c) => (c.id === editId ? record : c)) : [record, ...prev]
+      );
+      await recordAudit(editId ? 'Cập nhật lớp học' : 'Tạo lớp học mới', 'Lớp học', record.name);
+    } catch (err) {
+      setAppAlert({
+        type: 'error',
+        text: err instanceof Error ? err.message : String(err),
       });
-    } else {
-      await safeCreateOrSetDoc('classes', id, record as unknown as Record<string, unknown>);
     }
-    await recordAudit(editId ? 'Cập nhật lớp học' : 'Tạo lớp học mới', 'Lớp học', record.name);
   };
 
   const handleDeleteClass = async (classId: string) => {
-    if (!ensureCanWrite()) return;
-    await safeDeleteDoc('classes', classId);
-    await recordAudit('Xóa lớp học', 'Lớp học', classId);
+    if (!ensureSupabaseReady()) return;
+    try {
+      await supabaseDeleteDoc('classes', classId);
+      setCloudClasses((prev) => prev.filter((c) => c.id !== classId));
+      await recordAudit('Xóa lớp học', 'Lớp học', classId);
+    } catch (err) {
+      setAppAlert({
+        type: 'error',
+        text: err instanceof Error ? err.message : String(err),
+      });
+    }
   };
 
   const handleSaveStudent = async (
     stData: Omit<Student, 'id' | 'createdAt' | 'updatedAt' | 'ownerId'>,
     editId?: string
   ) => {
-    if (!ensureCanWrite()) return;
+    if (!ensureSupabaseReady()) return;
     const now = new Date().toISOString();
     const id = editId || `hs_${Date.now()}`;
+    const existing = cloudStudents.find((s) => s.id === editId);
     const record: Student = {
       ...stData,
       id,
-      studentUid: stData.studentUid || fbUser!.uid,
-      ownerId: fbUser!.uid,
-      createdAt: now,
+      studentUid: stData.studentUid || existing?.studentUid || defaultOwnerId,
+      ownerId: existing?.ownerId || defaultOwnerId,
+      createdAt: existing?.createdAt || now,
       updatedAt: now,
     };
 
-    if (editId) {
-      const existing = cloudStudents.find((s) => s.id === editId);
-      await safeUpdateDoc('students', editId, {
-        ...record,
-        ownerId: existing?.ownerId || fbUser!.uid,
-        createdAt: existing?.createdAt || now,
+    try {
+      await supabaseUpsertDoc('students', id, record as unknown as Record<string, unknown>);
+      setCloudStudents((prev) =>
+        editId ? prev.map((s) => (s.id === editId ? record : s)) : [record, ...prev]
+      );
+      await recordAudit(
+        editId ? 'Cập nhật học sinh' : 'Thêm học sinh mới',
+        'Học sinh',
+        `${record.fullName} (${record.studentCode})`
+      );
+    } catch (err) {
+      setAppAlert({
+        type: 'error',
+        text: err instanceof Error ? err.message : String(err),
       });
-    } else {
-      await safeCreateOrSetDoc('students', id, record as unknown as Record<string, unknown>);
     }
-    await recordAudit(
-      editId ? 'Cập nhật học sinh' : 'Thêm học sinh mới',
-      'Học sinh',
-      `${record.fullName} (${record.studentCode})`
-    );
   };
 
   const handleDeleteStudent = async (studentId: string) => {
-    if (!ensureCanWrite()) return;
-    await safeDeleteDoc('students', studentId);
-    await recordAudit('Xóa học sinh', 'Học sinh', studentId);
+    if (!ensureSupabaseReady()) return;
+    try {
+      await supabaseDeleteDoc('students', studentId);
+      setCloudStudents((prev) => prev.filter((s) => s.id !== studentId));
+      await recordAudit('Xóa học sinh', 'Học sinh', studentId);
+    } catch (err) {
+      setAppAlert({
+        type: 'error',
+        text: err instanceof Error ? err.message : String(err),
+      });
+    }
   };
 
   const handleBatchImportStudents = async (
     validStudents: Omit<Student, 'id' | 'createdAt' | 'updatedAt' | 'ownerId'>[]
   ) => {
-    if (!ensureCanWrite()) return;
-    for (let i = 0; i < validStudents.length; i++) {
-      const st = validStudents[i];
-      const now = new Date().toISOString();
-      const id = `hs_${Date.now()}_${i}`;
-      const record: Student = {
-        ...st,
-        id,
-        studentUid: fbUser!.uid,
-        ownerId: fbUser!.uid,
-        createdAt: now,
-        updatedAt: now,
-      };
-      await safeCreateOrSetDoc('students', id, record as unknown as Record<string, unknown>);
+    if (!ensureSupabaseReady()) return;
+    try {
+      const inserted: Student[] = [];
+      for (let i = 0; i < validStudents.length; i++) {
+        const st = validStudents[i];
+        const now = new Date().toISOString();
+        const id = `hs_${Date.now()}_${i}`;
+        const record: Student = {
+          ...st,
+          id,
+          studentUid: defaultOwnerId,
+          ownerId: defaultOwnerId,
+          createdAt: now,
+          updatedAt: now,
+        };
+        await supabaseUpsertDoc('students', id, record as unknown as Record<string, unknown>);
+        inserted.push(record);
+      }
+      setCloudStudents((prev) => [...inserted, ...prev]);
+      await recordAudit(
+        'Nhập danh sách học sinh từ Excel',
+        'Học sinh',
+        `Số lượng: ${validStudents.length} học sinh`
+      );
+    } catch (err) {
+      setAppAlert({
+        type: 'error',
+        text: err instanceof Error ? err.message : String(err),
+      });
     }
-    await recordAudit(
-      'Nhập danh sách học sinh từ Excel',
-      'Học sinh',
-      `Số lượng: ${validStudents.length} học sinh`
-    );
   };
 
   const handleSaveQuestion = async (
     qData: Omit<Question, 'id' | 'createdAt' | 'updatedAt' | 'ownerId'>,
     editId?: string
   ) => {
-    if (!ensureCanWrite()) return;
+    if (!ensureSupabaseReady()) return;
     const now = new Date().toISOString();
     const id = editId || `q_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    const existing = cloudQuestions.find((q) => q.id === editId);
     const record: Question = {
       ...qData,
       id,
-      ownerId: fbUser!.uid,
-      createdAt: now,
+      ownerId: existing?.ownerId || defaultOwnerId,
+      createdAt: existing?.createdAt || now,
       updatedAt: now,
     };
 
-    if (editId) {
-      const existing = cloudQuestions.find((q) => q.id === editId);
-      await safeUpdateDoc('question_bank', editId, {
-        ...record,
-        ownerId: existing?.ownerId || fbUser!.uid,
-        createdAt: existing?.createdAt || now,
+    try {
+      await supabaseUpsertDoc('question_bank', id, record as unknown as Record<string, unknown>);
+      setCloudQuestions((prev) =>
+        editId ? prev.map((q) => (q.id === editId ? record : q)) : [record, ...prev]
+      );
+      await recordAudit(
+        editId ? 'Cập nhật câu hỏi' : 'Thêm câu hỏi mới',
+        'Ngân hàng câu hỏi',
+        record.code
+      );
+    } catch (err) {
+      setAppAlert({
+        type: 'error',
+        text: err instanceof Error ? err.message : String(err),
       });
-    } else {
-      await safeCreateOrSetDoc('question_bank', id, record as unknown as Record<string, unknown>);
     }
-    await recordAudit(
-      editId ? 'Cập nhật câu hỏi' : 'Thêm câu hỏi mới',
-      'Ngân hàng câu hỏi',
-      record.code
-    );
   };
 
   const handleDeleteQuestion = async (id: string) => {
-    if (!ensureCanWrite()) return;
-    await safeDeleteDoc('question_bank', id);
-    await recordAudit('Xóa câu hỏi', 'Ngân hàng câu hỏi', id);
+    if (!ensureSupabaseReady()) return;
+    try {
+      await supabaseDeleteDoc('question_bank', id);
+      setCloudQuestions((prev) => prev.filter((q) => q.id !== id));
+      await recordAudit('Xóa câu hỏi', 'Ngân hàng câu hỏi', id);
+    } catch (err) {
+      setAppAlert({
+        type: 'error',
+        text: err instanceof Error ? err.message : String(err),
+      });
+    }
   };
 
   const handleSaveExam = async (
@@ -517,104 +467,133 @@ export default function App() {
     keyData: Omit<ExamAnswerKey, 'createdAt' | 'updatedAt' | 'ownerId'>,
     editId?: string
   ) => {
-    if (!ensureCanWrite()) return;
+    if (!ensureSupabaseReady()) return;
     const now = new Date().toISOString();
     const id = editId || `exam_${Date.now()}`;
+    const existingExam = cloudExams.find((e) => e.id === id);
     const examRecord: Exam = {
       ...examData,
       id,
-      ownerId: fbUser!.uid,
-      createdAt: now,
+      ownerId: existingExam?.ownerId || defaultOwnerId,
+      createdAt: existingExam?.createdAt || now,
       updatedAt: now,
     };
     const keyRecord: ExamAnswerKey = {
       ...keyData,
       examId: id,
-      ownerId: fbUser!.uid,
-      createdAt: now,
+      ownerId: existingExam?.ownerId || defaultOwnerId,
+      createdAt: existingExam?.createdAt || now,
       updatedAt: now,
     };
 
-    const existingExam = cloudExams.find((e) => e.id === id);
-    if (existingExam) {
-      await safeUpdateDoc('exams', id, {
-        ...examRecord,
-        ownerId: existingExam.ownerId,
-        createdAt: existingExam.createdAt,
+    try {
+      await supabaseUpsertDoc('exams', id, examRecord as unknown as Record<string, unknown>);
+      await supabaseUpsertDoc(
+        'exam_answer_keys',
+        id,
+        keyRecord as unknown as Record<string, unknown>
+      );
+      setCloudExams((prev) =>
+        existingExam ? prev.map((e) => (e.id === id ? examRecord : e)) : [examRecord, ...prev]
+      );
+      setCloudAnswerKeys((prev) => [
+        ...prev.filter((k) => k.examId !== id),
+        keyRecord,
+      ]);
+      await recordAudit('Lưu đề kiểm tra & Ma trận', 'Đề kiểm tra', examRecord.title);
+    } catch (err) {
+      setAppAlert({
+        type: 'error',
+        text: err instanceof Error ? err.message : String(err),
       });
-    } else {
-      await safeCreateOrSetDoc('exams', id, examRecord as unknown as Record<string, unknown>);
     }
-    await safeCreateOrSetDoc(
-      'exam_answer_keys',
-      id,
-      keyRecord as unknown as Record<string, unknown>
-    );
-    await recordAudit('Lưu đề kiểm tra & Ma trận', 'Đề kiểm tra', examRecord.title);
   };
 
   const handleDeleteExam = async (examId: string) => {
-    if (!ensureCanWrite()) return;
-    await safeDeleteDoc('exams', examId);
-    await recordAudit('Xóa đề kiểm tra', 'Đề kiểm tra', examId);
+    if (!ensureSupabaseReady()) return;
+    try {
+      await supabaseDeleteDoc('exams', examId);
+      await supabaseDeleteDoc('exam_answer_keys', examId);
+      setCloudExams((prev) => prev.filter((e) => e.id !== examId));
+      setCloudAnswerKeys((prev) => prev.filter((k) => k.examId !== examId));
+      await recordAudit('Xóa đề kiểm tra', 'Đề kiểm tra', examId);
+    } catch (err) {
+      setAppAlert({
+        type: 'error',
+        text: err instanceof Error ? err.message : String(err),
+      });
+    }
   };
 
   const handleCreateAssignment = async (
     asgData: Omit<Assignment, 'id' | 'createdAt' | 'updatedAt' | 'ownerId'>
   ) => {
-    if (!ensureCanWrite()) return;
+    if (!ensureSupabaseReady()) return;
     const now = new Date().toISOString();
     const id = `assign_${Date.now()}`;
     const record: Assignment = {
       ...asgData,
       id,
-      ownerId: fbUser!.uid,
+      ownerId: defaultOwnerId,
       createdAt: now,
       updatedAt: now,
     };
 
-    await safeCreateOrSetDoc('assignments', id, record as unknown as Record<string, unknown>);
-    await recordAudit(
-      'Giao bài kiểm tra cho lớp',
-      'Kiểm tra trực tuyến',
-      `${record.examTitle} -> ${record.className}`
-    );
+    try {
+      await supabaseUpsertDoc('assignments', id, record as unknown as Record<string, unknown>);
+      setCloudAssignments((prev) => [record, ...prev]);
+      await recordAudit(
+        'Giao bài kiểm tra cho lớp',
+        'Kiểm tra trực tuyến',
+        `${record.examTitle} -> ${record.className}`
+      );
+    } catch (err) {
+      setAppAlert({
+        type: 'error',
+        text: err instanceof Error ? err.message : String(err),
+      });
+    }
   };
 
   const handleSaveOrSubmitAttempt = async (
     subData: Omit<Submission, 'id' | 'createdAt' | 'updatedAt' | 'ownerId'>,
     existingId?: string
   ): Promise<string> => {
-    if (!ensureCanWrite()) return existingId || '';
+    if (!ensureSupabaseReady()) return existingId || '';
     const now = new Date().toISOString();
     const id = existingId || `sub_${Date.now()}`;
+    const existing = cloudSubmissions.find((s) => s.id === id);
     const record: Submission = {
       ...subData,
       id,
-      studentUid: fbUser!.uid,
-      ownerId: fbUser!.uid,
-      createdAt: now,
+      studentUid: existing?.studentUid || defaultOwnerId,
+      ownerId: existing?.ownerId || defaultOwnerId,
+      createdAt: existing?.createdAt || now,
       updatedAt: now,
     };
 
-    const existing = cloudSubmissions.find((s) => s.id === id);
-    if (existing) {
-      await safeUpdateDoc('submissions', id, {
-        ...record,
-        ownerId: existing.ownerId,
-        studentUid: existing.studentUid,
-        createdAt: existing.createdAt,
-      });
-    } else {
-      await safeCreateOrSetDoc('submissions', id, record as unknown as Record<string, unknown>);
-    }
-
-    if (subData.status === 'Đã nộp' || subData.status === 'Chờ chấm' || subData.status === 'Đã chấm') {
-      await recordAudit(
-        `Học sinh nộp bài (${subData.status})`,
-        'Bài làm học sinh',
-        `${subData.studentName} - Điểm TN: ${subData.objectiveScore}`
+    try {
+      await supabaseUpsertDoc('submissions', id, record as unknown as Record<string, unknown>);
+      setCloudSubmissions((prev) =>
+        existing ? prev.map((s) => (s.id === id ? record : s)) : [record, ...prev]
       );
+
+      if (
+        subData.status === 'Đã nộp' ||
+        subData.status === 'Chờ chấm' ||
+        subData.status === 'Đã chấm'
+      ) {
+        await recordAudit(
+          `Học sinh nộp bài (${subData.status})`,
+          'Bài làm học sinh',
+          `${subData.studentName} - Điểm TN: ${subData.objectiveScore}`
+        );
+      }
+    } catch (err) {
+      setAppAlert({
+        type: 'error',
+        text: err instanceof Error ? err.message : String(err),
+      });
     }
     return id;
   };
@@ -626,12 +605,12 @@ export default function App() {
     feedback: string,
     reason: string
   ) => {
-    if (!ensureCanWrite()) return;
+    if (!ensureSupabaseReady()) return;
     const now = new Date().toISOString();
     const newTotal = Math.round((newObjectiveScore + newEssayScore) * 100) / 100;
     const historyEntry = {
       timestamp: now,
-      actorName: fbUser?.displayName || 'Nguyễn Tiến Dương',
+      actorName: 'Nguyễn Tiến Dương',
       previousScore: submission.totalScore,
       newScore: newTotal,
       reason,
@@ -649,85 +628,137 @@ export default function App() {
       updatedAt: now,
     };
 
-    await safeUpdateDoc('submissions', submission.id, updated as unknown as Record<string, unknown>);
-
-    await recordAudit(
-      'Chấm bài / Điều chỉnh điểm số',
-      'Chấm điểm',
-      `HS ${submission.studentName}: ${submission.totalScore} -> ${newTotal} điểm (${reason})`
-    );
+    try {
+      await supabaseUpsertDoc(
+        'submissions',
+        submission.id,
+        updated as unknown as Record<string, unknown>
+      );
+      setCloudSubmissions((prev) =>
+        prev.map((s) => (s.id === submission.id ? updated : s))
+      );
+      await recordAudit(
+        'Chấm bài / Điều chỉnh điểm số',
+        'Chấm điểm',
+        `HS ${submission.studentName}: ${submission.totalScore} -> ${newTotal} điểm (${reason})`
+      );
+    } catch (err) {
+      setAppAlert({
+        type: 'error',
+        text: err instanceof Error ? err.message : String(err),
+      });
+    }
   };
 
   const handleSaveLearningPlan = async (
     planData: Omit<LearningPlan, 'id' | 'createdAt' | 'updatedAt' | 'ownerId'>
   ) => {
-    if (!ensureCanWrite()) return;
+    if (!ensureSupabaseReady()) return;
     const now = new Date().toISOString();
     const id = `plan_${Date.now()}`;
     const record: LearningPlan = {
       ...planData,
       id,
-      ownerId: fbUser!.uid,
+      ownerId: defaultOwnerId,
       createdAt: now,
       updatedAt: now,
     };
-    await safeCreateOrSetDoc('learning_plans', id, record as unknown as Record<string, unknown>);
-    await recordAudit('Tạo kế hoạch ôn tập', 'Kế hoạch ôn tập', record.title);
+    try {
+      await supabaseUpsertDoc('learning_plans', id, record as unknown as Record<string, unknown>);
+      setCloudPlans((prev) => [record, ...prev]);
+      await recordAudit('Tạo kế hoạch ôn tập', 'Kế hoạch ôn tập', record.title);
+    } catch (err) {
+      setAppAlert({
+        type: 'error',
+        text: err instanceof Error ? err.message : String(err),
+      });
+    }
   };
 
   const handleDeleteLearningPlan = async (id: string) => {
-    if (!ensureCanWrite()) return;
-    await safeDeleteDoc('learning_plans', id);
+    if (!ensureSupabaseReady()) return;
+    try {
+      await supabaseDeleteDoc('learning_plans', id);
+      setCloudPlans((prev) => prev.filter((p) => p.id !== id));
+    } catch (err) {
+      setAppAlert({
+        type: 'error',
+        text: err instanceof Error ? err.message : String(err),
+      });
+    }
   };
 
   const handleSaveResource = async (
     resData: Omit<LearningResource, 'id' | 'createdAt' | 'updatedAt' | 'ownerId'>
   ) => {
-    if (!ensureCanWrite()) return;
+    if (!ensureSupabaseReady()) return;
     const now = new Date().toISOString();
     const id = `res_${Date.now()}`;
     const record: LearningResource = {
       ...resData,
       id,
-      ownerId: fbUser!.uid,
+      ownerId: defaultOwnerId,
       createdAt: now,
       updatedAt: now,
     };
-    await safeCreateOrSetDoc(
-      'learning_resources',
-      id,
-      record as unknown as Record<string, unknown>
-    );
-    await recordAudit('Thêm học liệu mới', 'Tài liệu - Học liệu', record.title);
+    try {
+      await supabaseUpsertDoc(
+        'learning_resources',
+        id,
+        record as unknown as Record<string, unknown>
+      );
+      setCloudResources((prev) => [record, ...prev]);
+      await recordAudit('Thêm học liệu mới', 'Tài liệu - Học liệu', record.title);
+    } catch (err) {
+      setAppAlert({
+        type: 'error',
+        text: err instanceof Error ? err.message : String(err),
+      });
+    }
   };
 
   const handleDeleteResource = async (id: string) => {
-    if (!ensureCanWrite()) return;
-    await safeDeleteDoc('learning_resources', id);
+    if (!ensureSupabaseReady()) return;
+    try {
+      await supabaseDeleteDoc('learning_resources', id);
+      setCloudResources((prev) => prev.filter((r) => r.id !== id));
+    } catch (err) {
+      setAppAlert({
+        type: 'error',
+        text: err instanceof Error ? err.message : String(err),
+      });
+    }
   };
 
   const handleSaveSettings = async (newSettings: SystemSetting) => {
-    if (!ensureCanWrite()) return;
+    if (!ensureSupabaseReady()) return;
     const now = new Date().toISOString();
     const updated: SystemSetting = {
       ...newSettings,
-      ownerId: fbUser!.uid,
+      ownerId: defaultOwnerId,
       updatedAt: now,
     };
     setCloudSettings(updated);
-    if (fbUser) {
-      await safeCreateOrSetDoc(
+    try {
+      await supabaseUpsertDoc(
         'system_settings',
         'default_settings',
         updated as unknown as Record<string, unknown>
       );
+      await recordAudit('Cập nhật cấu hình hệ thống', 'Cài đặt hệ thống', updated.schoolName);
+    } catch (err) {
+      setAppAlert({
+        type: 'error',
+        text: err instanceof Error ? err.message : String(err),
+      });
     }
-    await recordAudit('Cập nhật cấu hình hệ thống', 'Cài đặt hệ thống', updated.schoolName);
   };
 
   const handleExportFullBackup = () => {
     const backup = {
       exportedAt: new Date().toISOString(),
+      databaseProvider: 'Supabase PostgreSQL',
+      supabaseUrl: SUPABASE_PROJECT_URL,
       school: cloudSettings.schoolName,
       teacher: cloudSettings.teacherName,
       classes: activeClasses,
@@ -743,9 +774,15 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Sao_Luu_Tin_Hoc_THPT_Thanh_Hoa_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `Sao_Luu_Supabase_Tin_Hoc_THPT_Thanh_Hoa_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(SUPABASE_SETUP_SQL);
+    setCopiedSql(true);
+    setTimeout(() => setCopiedSql(false), 3000);
   };
 
   const visibleMenuItems = MENU_ITEMS.filter(
@@ -795,8 +832,30 @@ export default function App() {
             </div>
           </div>
 
-          {/* Right: Role Switch, Notifications & Teacher Account */}
+          {/* Right: Supabase SQL Helper, Role Switch, Notifications & Teacher Profile */}
           <div className="flex items-center gap-2.5 shrink-0">
+            <button
+              onClick={() => setShowSqlModal(true)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                sbTablesReady
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                  : 'bg-[#FF8A00] text-white border-[#FF8A00] hover:bg-[#e67c00]'
+              }`}
+              title="Xem cấu hình bảng SQL Supabase"
+            >
+              <Terminal className="w-3.5 h-3.5" />
+              <span>{sbTablesReady ? 'Supabase: Đã sẵn sàng' : 'Khởi tạo Bảng SQL Supabase'}</span>
+            </button>
+
+            <button
+              onClick={() => loadAllDataFromSupabase()}
+              disabled={sbChecking}
+              className="p-2 rounded-lg bg-[#F4F8FC] hover:bg-blue-50 text-[#0D47A1] border border-slate-200 cursor-pointer"
+              title="Làm mới dữ liệu từ Supabase"
+            >
+              <RefreshCw className={`w-4 h-4 ${sbChecking ? 'animate-spin' : ''}`} />
+            </button>
+
             {/* Role View Switcher */}
             <div className="hidden xl:flex items-center bg-[#F4F8FC] p-1 rounded-lg border border-slate-200 text-xs">
               <button
@@ -858,67 +917,41 @@ export default function App() {
               )}
             </div>
 
-            {/* Account & Cloud Auth */}
+            {/* Teacher Account */}
             <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
               <TeacherAvatarSvg className="w-9 h-9 hidden sm:block" />
               <div className="hidden md:block text-left">
-                <p className="text-xs font-bold text-[#0D47A1] leading-none">
-                  {fbUser ? fbUser.displayName || 'Nguyễn Tiến Dương' : 'Nguyễn Tiến Dương'}
-                </p>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  {fbUser ? 'Đã kết nối Firestore' : 'Chưa đăng nhập Cloud'}
+                <p className="text-xs font-bold text-[#0D47A1] leading-none">Nguyễn Tiến Dương</p>
+                <p className="text-[11px] text-emerald-700 font-semibold mt-0.5">
+                  {sbTablesReady ? 'Đã đồng bộ Supabase' : 'Đang chờ tạo bảng SQL'}
                 </p>
               </div>
-              {fbUser ? (
-                <button
-                  onClick={() => logoutFirebase()}
-                  className="p-2 text-slate-600 hover:text-red-600 cursor-pointer"
-                  title="Đăng xuất khỏi Firebase"
-                >
-                  <LogOut className="w-4 h-4" />
-                </button>
-              ) : (
-                <button
-                  onClick={() =>
-                    loginWithGoogle().catch((err) =>
-                      setAppAlert({
-                        type: 'error',
-                        text: `Không thể mở hộp thoại đăng nhập Google: ${
-                          err instanceof Error ? err.message : String(err)
-                        }`,
-                      })
-                    )
-                  }
-                  className="px-3 py-1.5 bg-[#0D47A1] hover:bg-[#168BFA] text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer whitespace-nowrap"
-                >
-                  <LogIn className="w-3.5 h-3.5" />
-                  <span>Đăng nhập Google</span>
-                </button>
-              )}
             </div>
           </div>
         </div>
 
-        {/* Cloud Connection Status Bar */}
+        {/* Supabase Status Bar */}
         <div
           className={`px-4 lg:px-6 py-1.5 text-xs flex flex-wrap items-center justify-between gap-2 border-t ${
-            fbUser
-              ? 'bg-blue-50/70 border-blue-100 text-[#0D47A1]'
-              : 'bg-slate-100 border-slate-200 text-slate-700'
+            sbTablesReady
+              ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
+              : 'bg-amber-50 border-amber-200 text-amber-950'
           }`}
         >
           <div className="flex items-center gap-2 font-semibold">
             <Cloud className="w-3.5 h-3.5 shrink-0" />
-            {fbUser ? (
-              <span>
-                <strong>[ĐÃ KẾT NỐI CLOUD FIRESTORE]:</strong> Mọi thao tác quản lý lớp học, học sinh, ngân hàng câu hỏi, đề kiểm tra và kết quả học tập đều được lưu trữ trực tiếp trên cơ sở dữ liệu đám mây.
-              </span>
-            ) : (
-              <span>
-                <strong>[TRẠNG THÁI CƠ SỞ DỮ LIỆU]:</strong> Vui lòng nhấn <strong>&quot;Đăng nhập Google&quot;</strong> ở góc phải phía trên để kết nối và lưu trữ dữ liệu trực tiếp trên Cloud Firestore.
-              </span>
-            )}
+            <span>
+              <strong>[CƠ SỞ DỮ LIỆU SUPABASE]:</strong> {sbStatusMsg}
+            </span>
           </div>
+          {!sbTablesReady && (
+            <button
+              onClick={() => setShowSqlModal(true)}
+              className="font-bold text-[#0D47A1] underline cursor-pointer shrink-0"
+            >
+              Mở mã lệnh SQL khởi tạo bảng trên Supabase →
+            </button>
+          )}
         </div>
       </header>
 
@@ -985,7 +1018,7 @@ export default function App() {
               <p className="font-bold text-[#00C8FF]">TRƯỜNG THPT THANH HÒA</p>
               <p className="text-blue-100">GV: Nguyễn Tiến Dương</p>
               <p className="text-blue-200 text-[11px]">
-                Khối 10 · Khối 11 · Khối 12
+                Supabase: gdoxbonoiumnpiswqris
               </p>
             </div>
           )}
@@ -1143,6 +1176,111 @@ export default function App() {
         </main>
       </div>
 
+      {/* SUPABASE SQL SETUP MODAL */}
+      {showSqlModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-4xl w-full p-6 border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div>
+                <span className="text-xs font-bold text-[#168BFA] uppercase">
+                  KẾT NỐI SUPABASE: {SUPABASE_PROJECT_URL}
+                </span>
+                <h3 className="text-lg font-bold text-[#0D47A1]">
+                  Khởi tạo Bảng Dữ liệu PostgreSQL trên Supabase (Chỉ cần làm 1 lần)
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowSqlModal(false)}
+                className="p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+
+            <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-xs text-[#17365D] space-y-2">
+              <p className="font-bold text-sm text-[#0D47A1]">
+                Hướng dẫn 3 bước để kích hoạt toàn bộ 11 bảng dữ liệu trên Supabase của thầy:
+              </p>
+              <ol className="list-decimal pl-5 space-y-1">
+                <li>
+                  Nhấn nút <strong>&quot;1. Sao chép toàn bộ lệnh SQL&quot;</strong> bên dưới.
+                </li>
+                <li>
+                  Mở trang{' '}
+                  <a
+                    href="https://supabase.com/dashboard/project/gdoxbonoiumnpiswqris/sql/new"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-bold text-[#168BFA] underline inline-flex items-center gap-1"
+                  >
+                    <span>Supabase SQL Editor (Dự án gdoxbonoiumnpiswqris)</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                  , dán đoạn mã SQL vừa sao chép vào ô soạn thảo và nhấn nút <strong>RUN</strong>.
+                </li>
+                <li>
+                  Quay lại cửa sổ này và nhấn nút{' '}
+                  <strong>&quot;2. Kiểm tra kết nối &amp; Đồng bộ ngay&quot;</strong>.
+                </li>
+              </ol>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleCopySql}
+                  className="px-4 py-2 bg-[#0D47A1] hover:bg-[#168BFA] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  {copiedSql ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-300" />
+                      <span>Đã sao chép lệnh SQL!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      <span>1. Sao chép toàn bộ lệnh SQL</span>
+                    </>
+                  )}
+                </button>
+
+                <a
+                  href="https://supabase.com/dashboard/project/gdoxbonoiumnpiswqris/sql/new"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-4 py-2 bg-[#F4F8FC] hover:bg-blue-50 text-[#0D47A1] border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1.5"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  <span>Mở Supabase SQL Editor</span>
+                </a>
+              </div>
+
+              <button
+                onClick={async () => {
+                  await loadAllDataFromSupabase();
+                  const st = await checkSupabaseStatus();
+                  if (st.tablesReady) {
+                    setShowSqlModal(false);
+                    setAppAlert({
+                      type: 'info',
+                      text: 'Tuyệt vời! Đã kết nối và xác nhận đầy đủ các bảng dữ liệu trên Supabase.',
+                    });
+                  }
+                }}
+                className="px-4 py-2 bg-[#FF8A00] hover:bg-[#e67c00] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+              >
+                <RefreshCw className={`w-4 h-4 ${sbChecking ? 'animate-spin' : ''}`} />
+                <span>2. Kiểm tra kết nối &amp; Đồng bộ ngay</span>
+              </button>
+            </div>
+
+            <pre className="p-4 rounded-xl bg-slate-900 text-slate-100 text-xs overflow-x-auto max-h-80 leading-relaxed select-all">
+              {SUPABASE_SETUP_SQL}
+            </pre>
+          </div>
+        </div>
+      )}
+
       {/* D. FOOTER BAR */}
       <footer className="bg-[#0D47A1] text-white border-t border-[#168BFA]/40 py-5 px-6 no-print">
         <div className="max-w-[1600px] mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-xs">
@@ -1161,7 +1299,7 @@ export default function App() {
               Phương châm: “Học thật - Hiểu sâu - Ứng dụng tốt”
             </p>
             <p className="text-blue-100">
-              Nâng cao chất lượng dạy và học môn Tin học · Phát triển năng lực số toàn diện cho học sinh THPT
+              Nền tảng lưu trữ đám mây: Supabase PostgreSQL ({SUPABASE_PROJECT_URL})
             </p>
           </div>
         </div>
