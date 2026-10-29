@@ -10,6 +10,10 @@ import {
   Lock,
   UserCheck,
   FileCheck,
+  KeyRound,
+  LogOut,
+  Search,
+  GraduationCap,
 } from 'lucide-react';
 import {
   Assignment,
@@ -19,6 +23,20 @@ import {
   Submission,
 } from '../types';
 import { gradeObjectiveSubmission } from '../data/demoSeedData';
+
+function extractClassCode(str: string): string {
+  const m = String(str || '')
+    .toUpperCase()
+    .match(/\b(10|11|12)[A-Z]\d*\b/);
+  return m ? m[0] : String(str || '').trim().toLowerCase();
+}
+
+function doesAssignmentMatchStudent(asg: Assignment, st: Student): boolean {
+  if (asg.classId && st.classId && asg.classId === st.classId) return true;
+  const asgCode = extractClassCode(asg.className || asg.classId);
+  const stCode = extractClassCode(st.className || st.classId);
+  return Boolean(asgCode && stCode && asgCode === stCode);
+}
 
 interface StudentExamPortalProps {
   students: Student[];
@@ -53,8 +71,15 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
   onSelectActiveStudent,
   onSaveOrSubmitAttempt,
 }) => {
-  const currentStudent =
-    students.find((s) => s.id === activeStudentId) || students[0] || null;
+  const currentStudent = students.find((s) => s.id === activeStudentId) || null;
+
+  // Student Login Window State inside Portal
+  const [loginSelectedStudentId, setLoginSelectedStudentId] = useState<string>(activeStudentId || '');
+  const [loginCodeInput, setLoginCodeInput] = useState<string>('');
+  const [loginSearchQuery, setLoginSearchQuery] = useState<string>('');
+  const [loginClassFilter, setLoginClassFilter] = useState<string>('ALL');
+  const [loginError, setLoginError] = useState<string>('');
+  const [showStudentLoginModal, setShowStudentLoginModal] = useState<boolean>(!activeStudentId);
 
   const [activeAssignment, setActiveAssignment] = useState<Assignment | null>(null);
   const [activeSubmissionId, setActiveSubmissionId] = useState<string | undefined>(undefined);
@@ -69,6 +94,15 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
     text: string;
   } | null>(null);
 
+  useEffect(() => {
+    if (activeStudentId) {
+      setLoginSelectedStudentId(activeStudentId);
+      setShowStudentLoginModal(false);
+    } else {
+      setShowStudentLoginModal(true);
+    }
+  }, [activeStudentId]);
+
   // Restore any active draft session on mount or when student changes
   useEffect(() => {
     if (!currentStudent) return;
@@ -80,7 +114,7 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
           const draft: DraftSession = JSON.parse(raw);
           const nowMs = Date.now();
           const leftSec = Math.floor((draft.expiresAtMs - nowMs) / 1000);
-          if (leftSec > 0 && asg.classId === currentStudent.classId) {
+          if (leftSec > 0 && doesAssignmentMatchStudent(asg, currentStudent)) {
             setActiveAssignment(asg);
             setActiveSubmissionId(draft.submissionId);
             setStartedAtIso(draft.startedAt);
@@ -227,7 +261,7 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
     if (!currentStudent) return;
 
     // 1. Check class permission
-    if (asg.classId !== currentStudent.classId) {
+    if (!doesAssignmentMatchStudent(asg, currentStudent)) {
       setPortalMessage({
         type: 'error',
         text: `Từ chối truy cập: Bài kiểm tra "${asg.examTitle}" chỉ giao cho lớp ${asg.className}. Tài khoản của bạn thuộc lớp ${currentStudent.className}.`,
@@ -690,10 +724,250 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
     );
   }
 
+  const handlePortalStudentLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    const targetSt = students.find((s) => s.id === loginSelectedStudentId);
+    if (!targetSt) {
+      setLoginError('Vui lòng chọn đúng tên học sinh trong danh sách.');
+      return;
+    }
+    const cleanInput = loginCodeInput.trim().toLowerCase();
+    if (!cleanInput) {
+      setLoginError('Vui lòng nhập Mã đăng nhập để xác thực vào phòng thi.');
+      return;
+    }
+    const validLoginCode = String(targetSt.loginCode || '').trim().toLowerCase();
+    const validStudentCode = String(targetSt.studentCode || '').trim().toLowerCase();
+
+    if (cleanInput === validLoginCode || cleanInput === validStudentCode) {
+      onSelectActiveStudent(targetSt.id);
+      setShowStudentLoginModal(false);
+      setLoginCodeInput('');
+      setLoginError('');
+      setPortalMessage({
+        type: 'success',
+        text: `Đăng nhập thành công! Xin chào học sinh ${targetSt.fullName} (${targetSt.className}). Bạn có thể chọn bài kiểm tra bên dưới để bắt đầu làm bài.`,
+      });
+    } else {
+      setLoginError(
+        `Mã đăng nhập không chính xác cho học sinh "${targetSt.fullName}". Vui lòng kiểm tra lại Mã đăng nhập hoặc Mã học sinh.`
+      );
+    }
+  };
+
+  const distinctStudentClasses = Array.from(
+    new Set(students.map((s) => String(s.className || '').trim()).filter(Boolean))
+  );
+
+  const filteredLoginStudents = students.filter((st) => {
+    const matchCls =
+      loginClassFilter === 'ALL' || String(st.className || '').trim() === loginClassFilter;
+    const q = loginSearchQuery.trim().toLowerCase();
+    const matchSearch =
+      !q ||
+      String(st.fullName || '').toLowerCase().includes(q) ||
+      String(st.studentCode || '').toLowerCase().includes(q);
+    return matchCls && matchSearch;
+  });
+
+  // If no student is authenticated or user clicked "Đổi học sinh", render the Student Login Window
+  if (!currentStudent || showStudentLoginModal) {
+    const previewChosenStudent = students.find((s) => s.id === loginSelectedStudentId);
+    return (
+      <div className="max-w-2xl mx-auto my-6 bg-white rounded-2xl border-2 border-[#168BFA] shadow-md overflow-hidden">
+        <div className="bg-gradient-to-r from-[#0D47A1] to-[#168BFA] text-white px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-white/15">
+              <GraduationCap className="w-6 h-6 text-[#00C8FF]" />
+            </div>
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#00C8FF]">
+                Cổng Kiểm Tra Trực Tuyến · THPT Thanh Hòa
+              </span>
+              <h2 className="text-lg font-bold text-white">
+                CỬA SỔ ĐĂNG NHẬP HỌC SINH VÀO LÀM BÀI THI
+              </h2>
+            </div>
+          </div>
+          {currentStudent && (
+            <button
+              type="button"
+              onClick={() => setShowStudentLoginModal(false)}
+              className="px-3 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-xs font-bold text-white cursor-pointer"
+            >
+              Quay lại
+            </button>
+          )}
+        </div>
+
+        <form onSubmit={handlePortalStudentLogin} className="p-6 space-y-4">
+          {loginError && (
+            <div className="p-3.5 rounded-xl bg-red-50 border border-red-300 text-red-900 text-xs font-bold flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+              <span>{loginError}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#F4F8FC] p-3.5 rounded-xl border border-slate-200">
+            <div>
+              <label className="block text-xs font-bold text-[#0D47A1] mb-1">
+                Lọc theo Lớp học:
+              </label>
+              <select
+                value={loginClassFilter}
+                onChange={(e) => {
+                  setLoginClassFilter(e.target.value);
+                  setLoginSelectedStudentId('');
+                }}
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-[#17365D]"
+              >
+                <option value="ALL">Tất cả các lớp ({students.length} HS)</option>
+                {distinctStudentClasses.map((cls) => (
+                  <option key={cls} value={cls}>
+                    {cls}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-[#0D47A1] mb-1">
+                Tìm nhanh tên học sinh:
+              </label>
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={loginSearchQuery}
+                  onChange={(e) => setLoginSearchQuery(e.target.value)}
+                  placeholder="Gõ tên hoặc mã HS..."
+                  className="w-full pl-8 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-xs"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-bold text-[#0D47A1] mb-1.5">
+              Bước 1: Chọn đúng tên học sinh trong danh sách (*):
+            </label>
+            <select
+              value={loginSelectedStudentId}
+              onChange={(e) => {
+                setLoginSelectedStudentId(e.target.value);
+                setLoginError('');
+              }}
+              className="w-full px-3.5 py-2.5 bg-white border-2 border-[#168BFA] rounded-xl text-sm font-bold text-[#0D47A1]"
+            >
+              <option value="">
+                -- Chọn họ và tên học sinh ({filteredLoginStudents.length} học sinh) --
+              </option>
+              {filteredLoginStudents.map((st, idx) => (
+                <option key={st.id} value={st.id}>
+                  {idx + 1}. {st.fullName} — {st.className} (Mã HS: {st.studentCode})
+                </option>
+              ))}
+            </select>
+
+            <div className="mt-2.5 border border-slate-200 rounded-xl overflow-hidden max-h-44 overflow-y-auto divide-y divide-slate-100">
+              {filteredLoginStudents.map((st, idx) => {
+                const isSelected = st.id === loginSelectedStudentId;
+                return (
+                  <button
+                    key={st.id}
+                    type="button"
+                    onClick={() => {
+                      setLoginSelectedStudentId(st.id);
+                      setLoginError('');
+                    }}
+                    className={`w-full px-3.5 py-2 text-left text-xs flex items-center justify-between cursor-pointer ${
+                      isSelected
+                        ? 'bg-[#0D47A1] text-white font-bold'
+                        : 'hover:bg-blue-50 text-[#17365D]'
+                    }`}
+                  >
+                    <span>
+                      {idx + 1}. <strong>{st.fullName}</strong>
+                    </span>
+                    <span>
+                      {st.className} · Mã: {st.studentCode}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {previewChosenStudent && (
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-xs text-emerald-950 flex items-center justify-between">
+              <div>
+                <p className="font-bold text-sm">Học sinh đã chọn: {previewChosenStudent.fullName}</p>
+                <p>
+                  Lớp: <strong>{previewChosenStudent.className}</strong> · Mã HS:{' '}
+                  <strong>{previewChosenStudent.studentCode}</strong>
+                </p>
+              </div>
+              {isTeacherOrAdmin && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setLoginCodeInput(
+                      previewChosenStudent.loginCode || previewChosenStudent.studentCode
+                    )
+                  }
+                  className="px-2.5 py-1 rounded bg-emerald-700 text-white font-bold text-[11px] cursor-pointer"
+                >
+                  GV điền nhanh mã ({previewChosenStudent.loginCode || previewChosenStudent.studentCode})
+                </button>
+              )}
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-bold text-[#0D47A1] mb-1.5">
+              Bước 2: Nhập Mã đăng nhập của học sinh (*):
+            </label>
+            <div className="relative">
+              <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="password"
+                value={loginCodeInput}
+                onChange={(e) => {
+                  setLoginCodeInput(e.target.value);
+                  setLoginError('');
+                }}
+                placeholder="Nhập Mã đăng nhập (hoặc Mã học sinh)..."
+                className="w-full pl-10 pr-4 py-2.5 bg-white border-2 border-slate-300 focus:border-[#0D47A1] rounded-xl text-sm font-bold text-[#17365D] focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            className="w-full py-3 bg-[#FF8A00] hover:bg-[#e67c00] text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Play className="w-4 h-4" />
+            <span>XÁC NHẬN ĐĂNG NHẬP & VÀO PHÒNG THI</span>
+          </button>
+        </form>
+      </div>
+    );
+  }
+
   // Portal Lobby View
-  const myClassAssignments = assignments.filter((a) => a.classId === currentStudent.classId);
-  const otherClassAssignments = assignments.filter((a) => a.classId !== currentStudent.classId);
-  const mySubmissions = submissions.filter((s) => s.studentId === currentStudent.id);
+  const myClassAssignments = assignments.filter((a) =>
+    doesAssignmentMatchStudent(a, currentStudent)
+  );
+  const otherClassAssignments = assignments.filter(
+    (a) => !doesAssignmentMatchStudent(a, currentStudent)
+  );
+  const mySubmissions = submissions.filter(
+    (s) =>
+      s.studentId === currentStudent.id ||
+      (s.studentCode &&
+        currentStudent.studentCode &&
+        s.studentCode.toLowerCase() === currentStudent.studentCode.toLowerCase())
+  );
 
   return (
     <div className="space-y-6">
@@ -708,31 +982,27 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
               Phân hệ 5: Cổng Kiểm tra Trực tuyến dành cho Học sinh
             </h2>
             <p className="text-xs text-slate-600">
-              Học sinh đang đăng nhập: <strong>{currentStudent.fullName}</strong> (Mã HS:{' '}
-              <strong>{currentStudent.studentCode}</strong> · Lớp:{' '}
+              Học sinh đang đăng nhập: <strong className="text-[#0D47A1]">{currentStudent.fullName}</strong>{' '}
+              (Mã HS: <strong>{currentStudent.studentCode}</strong> · Lớp:{' '}
               <strong>{currentStudent.className}</strong>)
             </p>
           </div>
         </div>
 
-        {isTeacherOrAdmin && (
-          <div className="flex items-center gap-2 bg-[#F4F8FC] p-2 rounded-lg border border-blue-200">
-            <span className="text-xs font-bold text-[#0D47A1]">
-              Chế độ GV kiểm thử tài khoản HS:
-            </span>
-            <select
-              value={currentStudent.id}
-              onChange={(e) => onSelectActiveStudent(e.target.value)}
-              className="px-2.5 py-1.5 bg-white border border-slate-300 rounded text-xs font-bold text-[#17365D]"
-            >
-              {students.map((st) => (
-                <option key={st.id} value={st.id}>
-                  {st.fullName} ({st.className})
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setLoginCodeInput('');
+              setLoginError('');
+              setShowStudentLoginModal(true);
+            }}
+            className="px-3.5 py-2 rounded-lg bg-[#FF8A00] hover:bg-[#e67c00] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Đổi học sinh / Đăng nhập HS khác</span>
+          </button>
+        </div>
       </div>
 
       {portalMessage && (

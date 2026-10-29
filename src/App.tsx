@@ -23,6 +23,7 @@ import {
   CheckCircle2,
   ExternalLink,
   Terminal,
+  LogOut,
 } from 'lucide-react';
 import {
   supabase,
@@ -64,6 +65,7 @@ import {
   ResourcesView,
   SystemSettingsView,
 } from './components/OtherModulesView';
+import { LoginPortalGate } from './components/LoginPortalGate';
 
 interface NavMenuItem {
   id: MenuTabId;
@@ -73,8 +75,8 @@ interface NavMenuItem {
 }
 
 const MENU_ITEMS: NavMenuItem[] = [
-  { id: 'overview', label: '1. Tổng quan', icon: LayoutDashboard },
-  { id: 'classes_students', label: '2. Lớp học và học sinh', icon: Users },
+  { id: 'overview', label: '1. Tổng quan', icon: LayoutDashboard, teacherOnly: true },
+  { id: 'classes_students', label: '2. Lớp học và học sinh', icon: Users, teacherOnly: true },
   { id: 'question_bank', label: '3. Ngân hàng câu hỏi', icon: Database, teacherOnly: true },
   { id: 'exams', label: '4. Đề kiểm tra', icon: FileText, teacherOnly: true },
   { id: 'student_portal', label: '5. Kiểm tra trực tuyến (HS)', icon: PlayCircle },
@@ -91,8 +93,9 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Role State
+  // Role & Login Gate State
   const [roleViewMode, setRoleViewMode] = useState<'teacher' | 'student'>('teacher');
+  const [showLoginGate, setShowLoginGate] = useState<boolean>(true);
 
   // Supabase Connection & Schema Readiness State
   const [sbConnected, setSbConnected] = useState<boolean>(false);
@@ -141,22 +144,6 @@ export default function App() {
     setSbConnected(status.connected);
     setSbTablesReady(status.tablesReady);
 
-    if (!status.connected) {
-      setSbStatusMsg(status.errorMessage || 'Không thể kết nối tới Supabase.');
-      setSbChecking(false);
-      return;
-    }
-
-    if (!status.tablesReady) {
-      setSbStatusMsg(
-        status.errorMessage ||
-          'Đã kết nối Supabase nhưng chưa tạo bảng dữ liệu. Nhấn "Khởi tạo Bảng SQL Supabase" để thiết lập.'
-      );
-      setShowSqlModal(true);
-      setSbChecking(false);
-      return;
-    }
-
     try {
       const [
         classesList,
@@ -202,9 +189,17 @@ export default function App() {
       if (settingsList.length > 0) {
         setCloudSettings(settingsList[0]);
       }
-      setSbStatusMsg(
-        `Đã kết nối đồng bộ trực tiếp với Supabase PostgreSQL (${SUPABASE_PROJECT_URL})`
-      );
+
+      if (status.tablesReady) {
+        setSbStatusMsg(
+          `Đã kết nối đồng bộ trực tiếp với Supabase PostgreSQL (${SUPABASE_PROJECT_URL})`
+        );
+      } else {
+        setSbStatusMsg(
+          status.errorMessage ||
+            'Đã kết nối Supabase. Nhấn "Khởi tạo Bảng SQL Supabase" nếu muốn đồng bộ đủ 11 bảng lên đám mây.'
+        );
+      }
     } catch (err) {
       setAppAlert({
         type: 'error',
@@ -246,20 +241,11 @@ export default function App() {
   const defaultOwnerId = 'teacher_nguyen_tien_duong';
 
   const ensureSupabaseReady = (): boolean => {
-    if (!sbTablesReady) {
-      setShowSqlModal(true);
-      setAppAlert({
-        type: 'error',
-        text: 'Các bảng dữ liệu trên Supabase chưa được khởi tạo. Vui lòng sao chép mã lệnh SQL trong cửa sổ hướng dẫn và nhấn RUN trong Supabase SQL Editor.',
-      });
-      return false;
-    }
     return true;
   };
 
   const recordAudit = useCallback(
     async (action: string, module: string, details?: string) => {
-      if (!sbTablesReady) return;
       const now = new Date().toISOString();
       const entry: AuditLogItem = {
         id: `log_${Date.now()}`,
@@ -793,6 +779,29 @@ export default function App() {
     (item) => !item.teacherOnly || isTeacherOrAdmin
   );
 
+  if (showLoginGate) {
+    return (
+      <LoginPortalGate
+        classes={activeClasses}
+        students={activeStudents}
+        onStudentLoginSuccess={(student) => {
+          setRoleViewMode('student');
+          setActiveStudentIdForPortal(student.id);
+          setActiveTab('student_portal');
+          setShowLoginGate(false);
+        }}
+        onTeacherLoginSuccess={() => {
+          setRoleViewMode('teacher');
+          setActiveTab('overview');
+          setShowLoginGate(false);
+        }}
+      />
+    );
+  }
+
+  const currentLoggedStudent =
+    activeStudents.find((s) => s.id === activeStudentIdForPortal) || null;
+
   return (
     <div className="min-h-screen flex flex-col bg-[#F4F8FC] text-[#17365D]">
       {/* A. TOP HEADER BAR */}
@@ -921,15 +930,41 @@ export default function App() {
               )}
             </div>
 
-            {/* Teacher Account */}
-            <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
-              <TeacherAvatarSvg className="w-9 h-9 hidden sm:block" />
-              <div className="hidden md:block text-left">
-                <p className="text-xs font-bold text-[#0D47A1] leading-none">Nguyễn Tiến Dương</p>
-                <p className="text-[11px] text-emerald-700 font-semibold mt-0.5">
-                  {sbTablesReady ? 'Đã đồng bộ Supabase' : 'Đang chờ tạo bảng SQL'}
-                </p>
-              </div>
+            {/* Teacher or Student Account & Logout to Login Gate */}
+            <div className="flex items-center gap-2.5 pl-2 border-l border-slate-200">
+              {roleViewMode === 'teacher' ? (
+                <>
+                  <TeacherAvatarSvg className="w-9 h-9 hidden sm:block" />
+                  <div className="hidden md:block text-left">
+                    <p className="text-xs font-bold text-[#0D47A1] leading-none">
+                      GV: Nguyễn Tiến Dương
+                    </p>
+                    <p className="text-[11px] text-emerald-700 font-semibold mt-0.5">
+                      Trang chính Quản trị
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="hidden md:block text-left">
+                  <p className="text-xs font-bold text-[#0D47A1] leading-none">
+                    HS: {currentLoggedStudent?.fullName || 'Học sinh'}
+                  </p>
+                  <p className="text-[11px] text-[#168BFA] font-semibold mt-0.5">
+                    {currentLoggedStudent
+                      ? `${currentLoggedStudent.className} · Mã: ${currentLoggedStudent.studentCode}`
+                      : 'Phòng thi trực tuyến'}
+                  </p>
+                </div>
+              )}
+
+              <button
+                onClick={() => setShowLoginGate(true)}
+                className="px-3 py-1.5 rounded-lg bg-[#0D47A1] hover:bg-[#168BFA] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                title="Quay về Màn hình 2 Cửa sổ Đăng nhập (Học sinh & Giáo viên)"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Cổng Đăng nhập (HS / GV)</span>
+              </button>
             </div>
           </div>
         </div>

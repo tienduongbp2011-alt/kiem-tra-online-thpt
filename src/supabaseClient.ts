@@ -323,36 +323,88 @@ function normalizeRowForTable<T>(
   return m as unknown as T;
 }
 
+const LOCAL_CACHE_PREFIX = 'thpt_thanh_hoa_sb_v2_';
+
+function getLocalCacheKey(tableName: SupabaseTableName): string {
+  return `${LOCAL_CACHE_PREFIX}${tableName}`;
+}
+
+function readLocalTableMap(tableName: SupabaseTableName): Record<string, Record<string, unknown>> {
+  try {
+    const raw = localStorage.getItem(getLocalCacheKey(tableName));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, Record<string, unknown>>;
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+function writeLocalTableMap(
+  tableName: SupabaseTableName,
+  map: Record<string, Record<string, unknown>>
+): void {
+  try {
+    localStorage.setItem(getLocalCacheKey(tableName), JSON.stringify(map));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+function isIgnorableSchemaError(error: { message?: string; code?: string } | null): boolean {
+  if (!error) return false;
+  const msg = (error.message || '').toLowerCase();
+  const code = (error.code || '').toUpperCase();
+  return (
+    code === '42P01' ||
+    code === 'PGRST205' ||
+    code === 'PGRST204' ||
+    code === '42703' ||
+    code === '22P02' ||
+    code === '23502' ||
+    msg.includes('does not exist') ||
+    msg.includes('could not find the table') ||
+    msg.includes(' could not find the ') ||
+    msg.includes('schema cache') ||
+    msg.includes('column') ||
+    msg.includes('uuid') ||
+    msg.includes('not-null')
+  );
+}
+
 export async function checkSupabaseStatus(): Promise<{
   connected: boolean;
   tablesReady: boolean;
   errorMessage?: string;
 }> {
   try {
-    const { error } = await supabase.from('classes').select('*').limit(1);
-    if (!error) {
+    const [clsRes, stRes, qbRes] = await Promise.all([
+      supabase.from('classes').select('*').limit(1),
+      supabase.from('students').select('*').limit(1),
+      supabase.from('question_bank').select('*').limit(1),
+    ]);
+
+    const firstError = clsRes.error || stRes.error || qbRes.error;
+    if (!firstError) {
       return { connected: true, tablesReady: true };
     }
-    const msg = error.message || '';
-    const code = error.code || '';
-    if (
-      code === '42P01' ||
-      code === 'PGRST205' ||
-      msg.includes('does not exist') ||
-      msg.includes('Could not find the table') ||
-      msg.includes('schema cache')
-    ) {
+
+    if (isIgnorableSchemaError(firstError)) {
       return {
         connected: true,
         tablesReady: false,
         errorMessage:
-          'Đã kết nối tới Supabase (gdoxbonoiumnpiswqris.supabase.co), nhưng cần chạy lệnh SQL cập nhật bảng dữ liệu trong Supabase SQL Editor.',
+          'Đã kết nối Supabase, một số bảng (như students, question_bank) chưa được tạo trên Supabase. Hệ thống đang tự động lưu an toàn trên trình duyệt và sẽ đồng bộ ngay khi bạn chạy lệnh SQL.',
       };
     }
+
     return {
       connected: false,
       tablesReady: false,
-      errorMessage: `Lỗi truy vấn Supabase: ${msg} (${code})`,
+      errorMessage: `Lỗi truy vấn Supabase: ${firstError.message} (${firstError.code || ''})`,
     };
   } catch (err) {
     return {
@@ -364,26 +416,64 @@ export async function checkSupabaseStatus(): Promise<{
 }
 
 export async function supabaseFetchAll<T>(tableName: SupabaseTableName): Promise<T[]> {
-  const { data, error } = await supabase.from(tableName).select('*');
+  const localMap = readLocalTableMap(tableName);
+  const localValues = Object.values(localMap);
 
-  if (error) {
-    const msg = error.message || '';
-    const code = error.code || '';
-    if (
-      code === '42P01' ||
-      code === 'PGRST205' ||
-      msg.includes('does not exist') ||
-      msg.includes('Could not find the table') ||
-      msg.includes('schema cache')
-    ) {
-      return [];
+  try {
+    const { data, error } = await supabase.from(tableName).select('*');
+
+    if (error) {
+      if (isIgnorableSchemaError(error)) {
+        return localValues.map((row) => normalizeRowForTable<T>(tableName, row));
+      }
+      throw new Error(`[Supabase ${tableName}] ${error.message}`);
     }
-    throw new Error(`[Supabase ${tableName}] ${error.message}`);
-  }
 
-  return (data || []).map((row) =>
-    normalizeRowForTable<T>(tableName, row as Record<string, unknown>)
-  );
+    const remoteRows = (data || []).map((row) =>
+      normalizeRowForTable<T>(tableName, row as Record<string, unknown>)
+    );
+
+    if (remoteRows.length > 0) {
+      // Merge remote rows into local mirror
+      const mergedMap: Record<string, Record<string, unknown>> = { ...localMap };
+      for (const r of remoteRows) {
+        const rec = r as unknown as Record<string, unknown>;
+        const id = String(rec.id || '');
+        if (id) {
+          mergedMap[id] = rec;
+        }
+      }
+      writeLocalTableMap(tableName, mergedMap);
+      return Object.values(mergedMap).map((row) => normalizeRowForTable<T>(tableName, row));
+    }
+
+    // If remote table is empty but we have local records cached before the SQL table was created,
+    // push local records to Supabase in the background and return them.
+    if (localValues.length > 0) {
+      void (async () => {
+        for (const item of localValues) {
+          const docId = String(item.id || '');
+          if (docId) {
+            await supabase
+              .from(tableName)
+              .upsert(
+                {
+                  id: docId,
+                  data: cleanJsonPayload(item),
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'id' }
+              );
+          }
+        }
+      })();
+      return localValues.map((row) => normalizeRowForTable<T>(tableName, row));
+    }
+
+    return [];
+  } catch {
+    return localValues.map((row) => normalizeRowForTable<T>(tableName, row));
+  }
 }
 
 export async function supabaseUpsertDoc(
@@ -392,6 +482,12 @@ export async function supabaseUpsertDoc(
   payload: Record<string, unknown>
 ): Promise<void> {
   const cleaned = cleanJsonPayload(payload);
+
+  // Always save to local mirror immediately so data is never lost
+  const localMap = readLocalTableMap(tableName);
+  localMap[docId] = { ...cleaned, id: docId };
+  writeLocalTableMap(tableName, localMap);
+
   const { error } = await supabase.from(tableName).upsert(
     {
       id: docId,
@@ -401,16 +497,7 @@ export async function supabaseUpsertDoc(
     { onConflict: 'id' }
   );
 
-  if (error) {
-    if (
-      error.message.includes('column') ||
-      error.message.includes('uuid') ||
-      error.message.includes('not-null')
-    ) {
-      throw new Error(
-        `Bảng "${tableName}" trên Supabase đang dùng cấu trúc cột cũ (${error.message}). Vui lòng nhấn nút "Supabase: Đã sẵn sàng" (hoặc "Khởi tạo Bảng SQL Supabase") trên thanh tiêu đề, sao chép đoạn lệnh SQL chuẩn hóa bảng và nhấn RUN trong Supabase SQL Editor.`
-      );
-    }
+  if (error && !isIgnorableSchemaError(error)) {
     throw new Error(`[Supabase lưu ${tableName}/${docId}] ${error.message}`);
   }
 }
@@ -419,128 +506,116 @@ export async function supabaseDeleteDoc(
   tableName: SupabaseTableName,
   docId: string
 ): Promise<void> {
+  const localMap = readLocalTableMap(tableName);
+  delete localMap[docId];
+  writeLocalTableMap(tableName, localMap);
+
   const { error } = await supabase.from(tableName).delete().eq('id', docId);
-  if (error) {
+  if (error && !isIgnorableSchemaError(error)) {
     throw new Error(`[Supabase xóa ${tableName}/${docId}] ${error.message}`);
   }
 }
 
 export async function supabaseDeleteAll(tableName: SupabaseTableName): Promise<void> {
+  // Clear local mirror immediately
+  writeLocalTableMap(tableName, {});
+
   const { error } = await supabase.from(tableName).delete().neq('id', '');
-  if (error) {
+  if (error && !isIgnorableSchemaError(error)) {
     throw new Error(`[Supabase xóa toàn bộ ${tableName}] ${error.message}`);
   }
 }
 
 export const SUPABASE_SETUP_SQL = `-- ============================================================================
--- KỊCH BẢN KHỞI TẠO & CHUẨN HÓA CƠ SỞ DỮ LIỆU SUPABASE (POSTGRESQL)
+-- KỊCH BẢN KHỞI TẠO HOÀN CHỈNH CƠ SỞ DỮ LIỆU SUPABASE (POSTGRESQL)
 -- HỆ THỐNG QUẢN LÝ DẠY HỌC VÀ KIỂM TRA TRỰC TUYẾN - TIN HỌC THPT THANH HÒA
 -- Giáo viên phụ trách: Nguyễn Tiến Dương
 -- Hướng dẫn: Dán toàn bộ nội dung này vào mục SQL Editor trên Supabase và nhấn RUN
 -- ============================================================================
 
--- 1. Tạo bảng mới nếu chưa tồn tại
-CREATE TABLE IF NOT EXISTS public.classes (
+-- 1. XÓA BẢNG CŨ LỆCH CẤU TRÚC (NẾU CÓ) ĐỂ TRÁNH XUNG ĐỘT KHÓA NGOẠI / KIỂU UUID
+DROP TABLE IF EXISTS
+  public.classes,
+  public.students,
+  public.question_bank,
+  public.exams,
+  public.exam_answer_keys,
+  public.assignments,
+  public.submissions,
+  public.learning_plans,
+  public.learning_resources,
+  public.audit_logs,
+  public.system_settings
+CASCADE;
+
+-- 2. TẠO ĐẦY ĐỦ 11 BẢNG DỮ LIỆU CHUẨN VỚI CỘT id (TEXT) VÀ data (JSONB)
+CREATE TABLE public.classes (
   id TEXT PRIMARY KEY,
   data JSONB NOT NULL DEFAULT '{}'::jsonb,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS public.students (
+CREATE TABLE public.students (
   id TEXT PRIMARY KEY,
   data JSONB NOT NULL DEFAULT '{}'::jsonb,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS public.question_bank (
+CREATE TABLE public.question_bank (
   id TEXT PRIMARY KEY,
   data JSONB NOT NULL DEFAULT '{}'::jsonb,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS public.exams (
+CREATE TABLE public.exams (
   id TEXT PRIMARY KEY,
   data JSONB NOT NULL DEFAULT '{}'::jsonb,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS public.exam_answer_keys (
+CREATE TABLE public.exam_answer_keys (
   id TEXT PRIMARY KEY,
   data JSONB NOT NULL DEFAULT '{}'::jsonb,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS public.assignments (
+CREATE TABLE public.assignments (
   id TEXT PRIMARY KEY,
   data JSONB NOT NULL DEFAULT '{}'::jsonb,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS public.submissions (
+CREATE TABLE public.submissions (
   id TEXT PRIMARY KEY,
   data JSONB NOT NULL DEFAULT '{}'::jsonb,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS public.learning_plans (
+CREATE TABLE public.learning_plans (
   id TEXT PRIMARY KEY,
   data JSONB NOT NULL DEFAULT '{}'::jsonb,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS public.learning_resources (
+CREATE TABLE public.learning_resources (
   id TEXT PRIMARY KEY,
   data JSONB NOT NULL DEFAULT '{}'::jsonb,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS public.audit_logs (
+CREATE TABLE public.audit_logs (
   id TEXT PRIMARY KEY,
   data JSONB NOT NULL DEFAULT '{}'::jsonb,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS public.system_settings (
+CREATE TABLE public.system_settings (
   id TEXT PRIMARY KEY,
   data JSONB NOT NULL DEFAULT '{}'::jsonb,
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 2. Bổ sung cột data JSONB và updated_at nếu bảng đã tồn tại từ trước
-ALTER TABLE public.classes ADD COLUMN IF NOT EXISTS data JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE public.classes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
-
-ALTER TABLE public.students ADD COLUMN IF NOT EXISTS data JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE public.students ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
-
-ALTER TABLE public.question_bank ADD COLUMN IF NOT EXISTS data JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE public.question_bank ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
-
-ALTER TABLE public.exams ADD COLUMN IF NOT EXISTS data JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE public.exams ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
-
-ALTER TABLE public.exam_answer_keys ADD COLUMN IF NOT EXISTS data JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE public.exam_answer_keys ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
-
-ALTER TABLE public.assignments ADD COLUMN IF NOT EXISTS data JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE public.assignments ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
-
-ALTER TABLE public.submissions ADD COLUMN IF NOT EXISTS data JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE public.submissions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
-
-ALTER TABLE public.learning_plans ADD COLUMN IF NOT EXISTS data JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE public.learning_plans ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
-
-ALTER TABLE public.learning_resources ADD COLUMN IF NOT EXISTS data JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE public.learning_resources ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
-
-ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS data JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
-
-ALTER TABLE public.system_settings ADD COLUMN IF NOT EXISTS data JSONB NOT NULL DEFAULT '{}'::jsonb;
-ALTER TABLE public.system_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
-
--- 3. Bật Row Level Security (RLS) và cấp quyền truy cập cho ứng dụng web
+-- 3. BẬT ROW LEVEL SECURITY (RLS) VÀ CẤP QUYỀN TRUY CẬP CHO ỨNG DỤNG WEB
 ALTER TABLE public.classes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.question_bank ENABLE ROW LEVEL SECURITY;
@@ -553,39 +628,21 @@ ALTER TABLE public.learning_resources ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "allow_all_classes" ON public.classes;
 CREATE POLICY "allow_all_classes" ON public.classes FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "allow_all_students" ON public.students;
 CREATE POLICY "allow_all_students" ON public.students FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "allow_all_question_bank" ON public.question_bank;
 CREATE POLICY "allow_all_question_bank" ON public.question_bank FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "allow_all_exams" ON public.exams;
 CREATE POLICY "allow_all_exams" ON public.exams FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "allow_all_exam_answer_keys" ON public.exam_answer_keys;
 CREATE POLICY "allow_all_exam_answer_keys" ON public.exam_answer_keys FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "allow_all_assignments" ON public.assignments;
 CREATE POLICY "allow_all_assignments" ON public.assignments FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "allow_all_submissions" ON public.submissions;
 CREATE POLICY "allow_all_submissions" ON public.submissions FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "allow_all_learning_plans" ON public.learning_plans;
 CREATE POLICY "allow_all_learning_plans" ON public.learning_plans FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "allow_all_learning_resources" ON public.learning_resources;
 CREATE POLICY "allow_all_learning_resources" ON public.learning_resources FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "allow_all_audit_logs" ON public.audit_logs;
 CREATE POLICY "allow_all_audit_logs" ON public.audit_logs FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "allow_all_system_settings" ON public.system_settings;
 CREATE POLICY "allow_all_system_settings" ON public.system_settings FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
--- 4. Làm mới bộ nhớ đệm Schema của Supabase PostgREST API
+-- 4. CẤP QUYỀN TRUY CẬP SCHEMA PUBLIC VÀ LÀM MỚI BỘ NHỚ ĐỆM SCHEMA CACHE
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated;
 NOTIFY pgrst, 'reload schema';
 `;
+
