@@ -32,6 +32,7 @@ import {
   supabaseFetchAll,
   supabaseUpsertDoc,
   supabaseDeleteDoc,
+  supabaseDeleteAll,
 } from './supabaseClient';
 import {
   Assignment,
@@ -384,6 +385,9 @@ export default function App() {
   ) => {
     if (!ensureSupabaseReady()) return;
     try {
+      // Xóa toàn bộ danh sách học sinh cũ trước khi thêm danh sách mới từ Excel
+      await supabaseDeleteAll('students');
+
       const inserted: Student[] = [];
       for (let i = 0; i < validStudents.length; i++) {
         const st = validStudents[i];
@@ -400,11 +404,11 @@ export default function App() {
         await supabaseUpsertDoc('students', id, record as unknown as Record<string, unknown>);
         inserted.push(record);
       }
-      setCloudStudents((prev) => [...inserted, ...prev]);
+      setCloudStudents(inserted);
       await recordAudit(
-        'Nhập danh sách học sinh từ Excel',
+        'Xóa danh sách cũ & Nhập danh sách học sinh mới từ Excel',
         'Học sinh',
-        `Số lượng: ${validStudents.length} học sinh`
+        `Số lượng mới: ${validStudents.length} học sinh`
       );
     } catch (err) {
       setAppAlert({

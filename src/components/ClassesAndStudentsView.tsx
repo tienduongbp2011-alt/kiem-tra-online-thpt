@@ -343,9 +343,9 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
     }
     const startIdx = lines[0].toLowerCase().includes('mahocsinh') ? 1 : 0;
     const results: CsvValidationRow[] = [];
-    const seenCodes = new Set<string>(
-      students.map((s) => String(s.studentCode || '').toLowerCase()).filter(Boolean)
-    );
+    // Vì hệ thống sẽ xóa danh sách học sinh cũ mỗi lần nhập từ Excel,
+    // chỉ kiểm tra trùng Mã HS ngay bên trong tệp Excel đang tải lên.
+    const seenCodes = new Set<string>();
 
     for (let i = startIdx; i < lines.length; i++) {
       const cols = lines[i].split(',').map((c) => c.trim());
@@ -355,7 +355,7 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
       if (!studentCode) errors.push('Thiếu Mã HS');
       if (!fullName) errors.push('Thiếu Họ tên');
       if (studentCode && seenCodes.has(studentCode.toLowerCase())) {
-        errors.push(`Trùng Mã HS (${studentCode})`);
+        errors.push(`Trùng Mã HS trong tệp (${studentCode})`);
       }
       if (!['10', '11', '12'].includes(gradeRaw)) {
         errors.push(`Khối "${gradeRaw}" không hợp lệ (chỉ nhận 10, 11, 12)`);
@@ -384,6 +384,8 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
   const handleExcelOrCsvFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setCsvRawText('');
+    setCsvValidationResults([]);
     if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
       try {
         const rows = await parseStudentExcelFile(file);
@@ -394,6 +396,8 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
           type: 'error',
           message: 'Không thể đọc tệp Excel (.xlsx). Vui lòng tải tệp mẫu Excel chuẩn của hệ thống.',
         });
+      } finally {
+        e.target.value = '';
       }
       return;
     }
@@ -401,6 +405,7 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
     reader.onload = (ev) => {
       const text = String(ev.target?.result || '');
       validateCsvContent(text);
+      e.target.value = '';
     };
     reader.readAsText(file, 'UTF-8');
   };
@@ -419,8 +424,8 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
       (r) => {
         const matchedClass = classes.find(
           (c) =>
-            c.code.toLowerCase() === r.classCode.toLowerCase() ||
-            c.name.toLowerCase().includes(r.classCode.toLowerCase())
+            String(c.code || '').toLowerCase() === r.classCode.toLowerCase() ||
+            String(c.name || '').toLowerCase().includes(r.classCode.toLowerCase())
         );
         return {
           studentCode: r.studentCode,
@@ -445,7 +450,7 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
     setCsvValidationResults([]);
     setStatusBanner({
       type: 'success',
-      message: `Đã nhập thành công ${validRows.length} học sinh hợp lệ từ tệp Excel vào hệ thống.`,
+      message: `Đã xóa danh sách học sinh cũ và nhập thành công ${validRows.length} học sinh mới từ tệp Excel vào hệ thống.`,
     });
   };
 
@@ -1149,7 +1154,7 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
             </div>
             <div className="space-y-3">
               <p className="text-xs text-slate-600">
-                Hỗ trợ đọc trực tiếp tệp <strong>Excel (.xlsx, .xls)</strong> theo mẫu chuẩn gồm các cột: <strong>MaHocSinh, HoVaTen, NgaySinh, MaLop, Khoi, MaDangNhap</strong>. Hệ thống tự động kiểm tra và cảnh báo các dòng sai định dạng hoặc trùng mã học sinh trước khi lưu.
+                Hỗ trợ đọc trực tiếp tệp <strong>Excel (.xlsx, .xls)</strong> theo mẫu chuẩn gồm các cột: <strong>MaHocSinh, HoVaTen, NgaySinh, MaLop, Khoi, MaDangNhap</strong>. Mỗi lần xác nhận nhập từ tệp Excel, hệ thống sẽ <strong>tự động xóa toàn bộ danh sách học sinh cũ</strong> và cập nhật mới theo danh sách trong tệp Excel.
               </p>
               <div className="flex flex-wrap items-center gap-3">
                 <input

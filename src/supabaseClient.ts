@@ -425,6 +425,13 @@ export async function supabaseDeleteDoc(
   }
 }
 
+export async function supabaseDeleteAll(tableName: SupabaseTableName): Promise<void> {
+  const { error } = await supabase.from(tableName).delete().neq('id', '');
+  if (error) {
+    throw new Error(`[Supabase xóa toàn bộ ${tableName}] ${error.message}`);
+  }
+}
+
 export const SUPABASE_SETUP_SQL = `-- ============================================================================
 -- KỊCH BẢN KHỞI TẠO & CHUẨN HÓA CƠ SỞ DỮ LIỆU SUPABASE (POSTGRESQL)
 -- HỆ THỐNG QUẢN LÝ DẠY HỌC VÀ KIỂM TRA TRỰC TUYẾN - TIN HỌC THPT THANH HÒA
