@@ -425,46 +425,53 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
     };
 
     return (
-      <div className="space-y-4">
-        {/* Sticky Exam Header Bar */}
-        <div className="bg-[#0D47A1] text-white rounded-xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-xs text-[#00C8FF] font-bold">
-              <span>PHÒNG THI TRỰC TUYẾN BẢO MẬT</span>
+      <div className="space-y-3 sm:space-y-4 pb-24 lg:pb-4">
+        {/* Sticky Exam Header Bar - Mobile Friendly */}
+        <div className="sticky top-0 z-20 bg-[#0D47A1] text-white rounded-xl p-3 sm:p-4 shadow-md flex flex-col gap-2.5 sm:flex-row sm:items-center justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] sm:text-xs text-[#00C8FF] font-bold">
+              <span>PHÒNG THI</span>
               <span>·</span>
-              <span>Học sinh: {currentStudent.fullName} ({currentStudent.studentCode})</span>
-              <span>·</span>
-              <span>{currentStudent.className}</span>
+              <span className="truncate">
+                {currentStudent.fullName} ({currentStudent.className})
+              </span>
             </div>
-            <h2 className="text-lg font-bold mt-0.5">{activeAssignment.examTitle}</h2>
+            <h2 className="text-sm sm:text-lg font-bold mt-0.5 leading-snug line-clamp-2">
+              {activeAssignment.examTitle}
+            </h2>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="bg-[#082F6E] px-4 py-2 rounded-lg border border-[#00C8FF]/40 flex items-center gap-2">
-              <Clock className="w-5 h-5 text-[#FF8A00]" />
+          <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3 pt-2 sm:pt-0 border-t border-blue-800/80 sm:border-t-0">
+            <div className="bg-[#082F6E] px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg border border-[#00C8FF]/40 flex items-center gap-2">
+              <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-[#FF8A00] shrink-0" />
               <div>
-                <p className="text-[11px] text-blue-200">Thời gian còn lại</p>
-                <p className="text-xl font-bold tabular-nums text-[#00C8FF]">
+                <p className="text-[10px] sm:text-[11px] text-blue-200 leading-none">Còn lại</p>
+                <p className="text-base sm:text-xl font-bold tabular-nums text-[#00C8FF] leading-tight">
                   {formatTimer(remainingSeconds)}
                 </p>
               </div>
             </div>
 
-            <button
-              onClick={handleSaveCloudProgress}
-              className="px-3.5 py-2.5 bg-[#168BFA] hover:bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-            >
-              <Save className="w-4 h-4" />
-              <span>Lưu bài làm</span>
-            </button>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <button
+                onClick={handleSaveCloudProgress}
+                className="px-2.5 py-2 sm:px-3.5 sm:py-2.5 bg-[#168BFA] hover:bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
+                title="Lưu bài làm"
+              >
+                <Save className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="hidden xs:inline sm:inline">Lưu</span>
+              </button>
 
-            <button
-              onClick={() => setShowSubmitConfirm(true)}
-              className="px-4 py-2.5 bg-[#FF8A00] hover:bg-[#e67c00] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-            >
-              <Send className="w-4 h-4" />
-              <span>Nộp bài ({answeredCount}/{questions.length})</span>
-            </button>
+              <button
+                onClick={() => setShowSubmitConfirm(true)}
+                className="px-3 py-2 sm:px-4 sm:py-2.5 bg-[#FF8A00] hover:bg-[#e67c00] text-white rounded-lg text-xs sm:text-sm font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span>
+                  Nộp bài ({answeredCount}/{questions.length})
+                </span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -474,14 +481,46 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Mobile Quick Question Strip (Horizontal Scroll on Phones) */}
+        <div className="lg:hidden bg-white rounded-xl p-2.5 border border-slate-200 shadow-2xs">
+          <div className="flex items-center justify-between text-[11px] font-bold text-[#0D47A1] mb-1.5 px-1">
+            <span>Chọn nhanh câu hỏi:</span>
+            <span>
+              Đã làm: {answeredCount}/{questions.length} câu
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+            {questions.map((q, idx) => {
+              const isAnswered = Boolean(answersMap[q.id]?.trim());
+              const isCurrent = idx === currentQuestionIdx;
+              return (
+                <button
+                  key={q.id}
+                  type="button"
+                  onClick={() => setCurrentQuestionIdx(idx)}
+                  className={`min-w-[38px] h-9 px-2 rounded-lg text-xs font-bold border shrink-0 transition-colors cursor-pointer tabular-nums ${
+                    isCurrent
+                      ? 'ring-2 ring-[#FF8A00] bg-[#0D47A1] text-white border-[#0D47A1]'
+                      : isAnswered
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : 'bg-[#F4F8FC] text-[#17365D] border-slate-300'
+                  }`}
+                >
+                  {idx + 1}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
           {/* Left: Active Question Area */}
-          <div className="lg:col-span-8 bg-white rounded-xl p-6 border border-slate-200 space-y-5">
+          <div className="lg:col-span-8 bg-white rounded-xl p-4 sm:p-6 border border-slate-200 space-y-4 sm:space-y-5 shadow-2xs">
             {currentQ ? (
               <>
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
                   <div>
-                    <p className="text-xs font-bold uppercase text-[#168BFA]">
+                    <p className="text-[11px] sm:text-xs font-bold uppercase text-[#168BFA]">
                       {currentQ.questionType === 'multiple_choice'
                         ? 'PHẦN I. TRẮC NGHIỆM NHIỀU LỰA CHỌN'
                         : currentQ.questionType === 'true_false'
@@ -490,39 +529,41 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
                         ? 'PHẦN III. CÂU TRẮC NGHIỆM TRẢ LỜI NGẮN'
                         : 'PHẦN IV. TỰ LUẬN'}
                     </p>
-                    <span className="text-sm font-bold text-[#0D47A1]">
-                      Câu hỏi {currentQuestionIdx + 1} / {questions.length} (Mã: {currentQ.code} ·{' '}
-                      {currentQ.cognitiveLevel})
+                    <span className="text-sm sm:text-base font-bold text-[#0D47A1]">
+                      Câu hỏi {currentQuestionIdx + 1} / {questions.length}{' '}
+                      <span className="text-xs font-normal text-slate-500">
+                        ({currentQ.cognitiveLevel})
+                      </span>
                     </span>
                   </div>
-                  <span className="text-xs font-bold text-[#FF8A00] tabular-nums">
-                    Điểm câu hỏi: {currentQ.points} điểm
+                  <span className="px-2.5 py-1 rounded-md bg-amber-50 border border-amber-200 text-xs font-bold text-[#FF8A00] tabular-nums">
+                    {currentQ.points} điểm
                   </span>
                 </div>
 
-                <p className="text-base font-bold text-[#17365D] leading-relaxed">
+                <p className="text-base sm:text-lg font-bold text-[#17365D] leading-relaxed">
                   {currentQ.content}
                 </p>
 
                 {currentQ.codeSnippet && (
-                  <pre className="p-4 bg-slate-900 text-cyan-300 rounded-lg text-xs font-mono overflow-x-auto">
+                  <pre className="p-3.5 sm:p-4 bg-slate-900 text-cyan-300 rounded-lg text-xs sm:text-sm font-mono overflow-x-auto">
                     {currentQ.codeSnippet}
                   </pre>
                 )}
 
                 {/* Answer Input by Question Type */}
                 {currentQ.questionType === 'multiple_choice' && currentQ.options && (
-                  <div className="space-y-2.5">
+                  <div className="space-y-2.5 sm:space-y-3">
                     {currentQ.options.map((opt, oIdx) => {
                       const letter = ['A', 'B', 'C', 'D'][oIdx] || 'A';
                       const selected = answersMap[currentQ.id] === letter;
                       return (
                         <label
                           key={letter}
-                          className={`p-3.5 rounded-lg border flex items-center gap-3 cursor-pointer transition-colors ${
+                          className={`p-3.5 sm:p-4 rounded-xl border-2 flex items-start sm:items-center gap-3 cursor-pointer transition-colors ${
                             selected
-                              ? 'bg-blue-50 border-[#0D47A1] font-bold text-[#0D47A1]'
-                              : 'bg-[#F4F8FC] border-slate-200 hover:border-blue-300'
+                              ? 'bg-blue-50 border-[#0D47A1] font-bold text-[#0D47A1] shadow-2xs'
+                              : 'bg-[#F4F8FC] border-slate-200 hover:border-blue-300 text-[#17365D]'
                           }`}
                         >
                           <input
@@ -532,9 +573,10 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
                             onChange={() =>
                               setAnswersMap((prev) => ({ ...prev, [currentQ.id]: letter }))
                             }
+                            className="mt-1 sm:mt-0 w-4 h-4 accent-[#0D47A1] shrink-0"
                           />
-                          <span className="text-sm">
-                            <strong>{letter}.</strong> {opt}
+                          <span className="text-sm sm:text-base leading-snug">
+                            <strong className="text-[#0D47A1] mr-1">{letter}.</strong> {opt}
                           </span>
                         </label>
                       );
@@ -544,41 +586,41 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
 
                 {currentQ.questionType === 'true_false' && currentQ.subItems && (
                   <div className="space-y-3">
-                    <p className="text-xs font-bold text-slate-600">
-                      Câu hỏi có 4 ý a, b, c, d , thí sinh chọn Đúng hoặc Sai:
+                    <p className="text-xs sm:text-sm font-bold text-slate-600">
+                      Chọn Đúng hoặc Sai cho từng phát biểu a, b, c, d bên dưới:
                     </p>
                     {currentQ.subItems.map((sub) => {
                       const currentVal = getTrueFalseValue(currentQ.id, sub.id);
                       return (
                         <div
                           key={sub.id}
-                          className="p-3.5 rounded-lg bg-[#F4F8FC] border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                          className="p-3.5 sm:p-4 rounded-xl bg-[#F4F8FC] border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                         >
-                          <span className="text-sm font-medium text-[#17365D]">
-                            <strong>{sub.id})</strong> {sub.text}
+                          <span className="text-sm sm:text-base font-medium text-[#17365D] leading-snug">
+                            <strong className="text-[#0D47A1]">{sub.id})</strong> {sub.text}
                           </span>
-                          <div className="flex items-center gap-2 shrink-0">
+                          <div className="grid grid-cols-2 sm:flex items-center gap-2 shrink-0">
                             <button
                               type="button"
                               onClick={() => setTrueFalseValue(currentQ.id, sub.id, 'Đ')}
-                              className={`px-3 py-1.5 rounded text-xs font-bold cursor-pointer ${
+                              className={`px-4 py-2.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold cursor-pointer border transition-colors ${
                                 currentVal === 'Đ'
-                                  ? 'bg-emerald-700 text-white'
-                                  : 'bg-white border border-slate-300 text-slate-700'
+                                  ? 'bg-emerald-700 text-white border-emerald-700 shadow-2xs'
+                                  : 'bg-white border-slate-300 text-slate-700'
                               }`}
                             >
-                              Đúng
+                              ✓ Đúng
                             </button>
                             <button
                               type="button"
                               onClick={() => setTrueFalseValue(currentQ.id, sub.id, 'S')}
-                              className={`px-3 py-1.5 rounded text-xs font-bold cursor-pointer ${
+                              className={`px-4 py-2.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold cursor-pointer border transition-colors ${
                                 currentVal === 'S'
-                                  ? 'bg-red-600 text-white'
-                                  : 'bg-white border border-slate-300 text-slate-700'
+                                  ? 'bg-red-600 text-white border-red-600 shadow-2xs'
+                                  : 'bg-white border-slate-300 text-slate-700'
                               }`}
                             >
-                              Sai
+                              ✕ Sai
                             </button>
                           </div>
                         </div>
@@ -588,9 +630,9 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
                 )}
 
                 {currentQ.questionType === 'short_answer' && (
-                  <div className="p-4 rounded-xl bg-[#F4F8FC] border border-blue-200 space-y-2">
+                  <div className="p-4 rounded-xl bg-[#F4F8FC] border-2 border-blue-200 space-y-2">
                     <label className="block text-sm font-bold text-[#0D47A1]">
-                      .Nội dung trả lời (Học sinh tự nhập đáp án):
+                      Nội dung trả lời của học sinh:
                     </label>
                     <input
                       type="text"
@@ -599,14 +641,14 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
                         setAnswersMap((prev) => ({ ...prev, [currentQ.id]: e.target.value }))
                       }
                       placeholder="Nhập kết quả hoặc từ khóa trả lời ngắn tại đây..."
-                      className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-sm font-bold text-[#17365D]"
+                      className="w-full px-4 py-3 bg-white border-2 border-slate-300 focus:border-[#0D47A1] rounded-xl text-base font-bold text-[#17365D] focus:outline-none"
                     />
                   </div>
                 )}
 
                 {currentQ.questionType === 'essay' && (
                   <div>
-                    <label className="block text-xs font-bold mb-1">
+                    <label className="block text-xs sm:text-sm font-bold text-[#0D47A1] mb-1.5">
                       Bài làm tự luận / Viết chương trình Python:
                     </label>
                     <textarea
@@ -616,22 +658,22 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
                         setAnswersMap((prev) => ({ ...prev, [currentQ.id]: e.target.value }))
                       }
                       placeholder="Nhập lời giải hoặc đoạn mã chương trình của bạn..."
-                      className="w-full p-3.5 bg-[#F4F8FC] border border-slate-300 rounded-lg text-sm font-mono"
+                      className="w-full p-3.5 bg-[#F4F8FC] border-2 border-slate-300 focus:border-[#0D47A1] rounded-xl text-sm sm:text-base font-mono focus:outline-none"
                     />
                   </div>
                 )}
 
-                <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+                <div className="flex items-center justify-between pt-4 border-t border-slate-200 gap-2">
                   <button
                     type="button"
                     disabled={currentQuestionIdx === 0}
                     onClick={() => setCurrentQuestionIdx((i) => Math.max(0, i - 1))}
-                    className="px-4 py-2 border border-slate-300 rounded-lg text-xs font-bold disabled:opacity-40 cursor-pointer"
+                    className="px-4 py-2.5 border border-slate-300 rounded-xl text-xs sm:text-sm font-bold disabled:opacity-40 cursor-pointer bg-white hover:bg-slate-50"
                   >
                     ← Câu trước
                   </button>
-                  <span className="text-xs text-slate-500">
-                    Tự động lưu nháp lúc: {lastAutoSaveTime || 'Vừa xong'}
+                  <span className="text-[11px] sm:text-xs text-slate-500 text-center">
+                    Tự động lưu: {lastAutoSaveTime || 'Vừa xong'}
                   </span>
                   <button
                     type="button"
@@ -639,7 +681,7 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
                     onClick={() =>
                       setCurrentQuestionIdx((i) => Math.min(questions.length - 1, i + 1))
                     }
-                    className="px-4 py-2 bg-[#0D47A1] text-white rounded-lg text-xs font-bold disabled:opacity-40 cursor-pointer"
+                    className="px-4 py-2.5 bg-[#0D47A1] text-white rounded-xl text-xs sm:text-sm font-bold disabled:opacity-40 cursor-pointer"
                   >
                     Câu tiếp theo →
                   </button>
@@ -651,11 +693,11 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
           </div>
 
           {/* Right: Question Navigator Palette */}
-          <div className="lg:col-span-4 bg-white rounded-xl p-5 border border-slate-200 space-y-4 h-fit">
+          <div className="lg:col-span-4 bg-white rounded-xl p-4 sm:p-5 border border-slate-200 space-y-4 h-fit">
             <h3 className="text-sm font-bold text-[#0D47A1]">
-              Bảng điều hướng câu hỏi ({answeredCount}/{questions.length} đã trả lời)
+              Bảng danh sách câu hỏi ({answeredCount}/{questions.length} đã trả lời)
             </h3>
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-5 sm:grid-cols-6 lg:grid-cols-5 gap-2">
               {questions.map((q, idx) => {
                 const isAnswered = Boolean(answersMap[q.id]?.trim());
                 const isCurrent = idx === currentQuestionIdx;
@@ -664,7 +706,7 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
                     key={q.id}
                     type="button"
                     onClick={() => setCurrentQuestionIdx(idx)}
-                    className={`py-2 rounded-lg text-xs font-bold border transition-colors cursor-pointer tabular-nums ${
+                    className={`py-2.5 rounded-lg text-xs sm:text-sm font-bold border transition-colors cursor-pointer tabular-nums ${
                       isCurrent
                         ? 'ring-2 ring-[#FF8A00] bg-[#0D47A1] text-white border-[#0D47A1]'
                         : isAnswered
@@ -681,17 +723,53 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
               <p>● Màu xanh lá: Câu hỏi đã trả lời</p>
               <p>● Màu xám nhạt: Câu hỏi chưa trả lời</p>
               <p>● Viền cam: Câu hỏi đang chọn</p>
-              <p className="text-[11px] text-slate-500 pt-1">
-                Lưu ý: Đáp án chính xác của đề thi được bảo mật trên máy chủ và không tải xuống trình duyệt trong quá trình làm bài.
-              </p>
             </div>
           </div>
+        </div>
+
+        {/* Sticky Mobile Bottom Navigation Bar for Easy Thumb Reach */}
+        <div className="fixed bottom-0 inset-x-0 z-30 lg:hidden bg-white/95 backdrop-blur-xs border-t-2 border-[#168BFA] px-3 py-2.5 shadow-lg flex items-center justify-between gap-2">
+          <button
+            type="button"
+            disabled={currentQuestionIdx === 0}
+            onClick={() => setCurrentQuestionIdx((i) => Math.max(0, i - 1))}
+            className="flex-1 py-2.5 px-3 rounded-xl border border-slate-300 bg-[#F4F8FC] text-[#0D47A1] text-xs font-bold disabled:opacity-40 cursor-pointer"
+          >
+            ← Câu trước
+          </button>
+          <div className="px-2 text-center shrink-0">
+            <p className="text-xs font-bold text-[#0D47A1] tabular-nums">
+              Câu {currentQuestionIdx + 1}/{questions.length}
+            </p>
+            <p className="text-[10px] text-emerald-700 font-semibold tabular-nums">
+              Đã làm {answeredCount}/{questions.length}
+            </p>
+          </div>
+          {currentQuestionIdx < questions.length - 1 ? (
+            <button
+              type="button"
+              onClick={() =>
+                setCurrentQuestionIdx((i) => Math.min(questions.length - 1, i + 1))
+              }
+              className="flex-1 py-2.5 px-3 rounded-xl bg-[#0D47A1] text-white text-xs font-bold cursor-pointer"
+            >
+              Câu tiếp →
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowSubmitConfirm(true)}
+              className="flex-1 py-2.5 px-3 rounded-xl bg-[#FF8A00] text-white text-xs font-bold cursor-pointer"
+            >
+              Nộp bài ngay
+            </button>
+          )}
         </div>
 
         {/* Confirm Submit Modal */}
         {showSubmitConfirm && (
           <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl max-w-md w-full p-6 border border-slate-200 space-y-4">
+            <div className="bg-white rounded-xl max-w-md w-full p-5 sm:p-6 border border-slate-200 space-y-4">
               <h3 className="text-lg font-bold text-[#0D47A1]">Xác nhận nộp bài kiểm tra</h3>
               <p className="text-sm text-slate-700">
                 Bạn đã trả lời <strong>{answeredCount}</strong> trên tổng số{' '}
@@ -706,13 +784,13 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
               <div className="flex justify-end gap-2">
                 <button
                   onClick={() => setShowSubmitConfirm(false)}
-                  className="px-4 py-2 border border-slate-300 rounded-lg text-xs font-bold cursor-pointer"
+                  className="px-4 py-2.5 border border-slate-300 rounded-lg text-xs font-bold cursor-pointer"
                 >
                   Quay lại làm tiếp
                 </button>
                 <button
                   onClick={() => handleFinalSubmit(false)}
-                  className="px-4 py-2 bg-[#FF8A00] text-white rounded-lg text-xs font-bold cursor-pointer"
+                  className="px-4 py-2.5 bg-[#FF8A00] text-white rounded-lg text-xs font-bold cursor-pointer"
                 >
                   Xác nhận Nộp bài ngay
                 </button>
@@ -751,7 +829,7 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
       });
     } else {
       setLoginError(
-        `Mã đăng nhập không chính xác cho học sinh "${targetSt.fullName}". Vui lòng kiểm tra lại Mã đăng nhập hoặc Mã học sinh.`
+        `Mã đăng nhập không chính xác cho học sinh "${targetSt.fullName}". Vui lòng kiểm tra lại.`
       );
     }
   };
@@ -775,18 +853,18 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
   if (!currentStudent || showStudentLoginModal) {
     const previewChosenStudent = students.find((s) => s.id === loginSelectedStudentId);
     return (
-      <div className="max-w-2xl mx-auto my-6 bg-white rounded-2xl border-2 border-[#168BFA] shadow-md overflow-hidden">
-        <div className="bg-gradient-to-r from-[#0D47A1] to-[#168BFA] text-white px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-white/15">
-              <GraduationCap className="w-6 h-6 text-[#00C8FF]" />
+      <div className="max-w-2xl mx-auto my-2 sm:my-6 bg-white rounded-2xl border-2 border-[#168BFA] shadow-md overflow-hidden">
+        <div className="bg-gradient-to-r from-[#0D47A1] to-[#168BFA] text-white px-4 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="p-2 sm:p-2.5 rounded-xl bg-white/15 shrink-0">
+              <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6 text-[#00C8FF]" />
             </div>
             <div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#00C8FF]">
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-[#00C8FF]">
                 Cổng Kiểm Tra Trực Tuyến · THPT Thanh Hòa
               </span>
-              <h2 className="text-lg font-bold text-white">
-                CỬA SỔ ĐĂNG NHẬP HỌC SINH VÀO LÀM BÀI THI
+              <h2 className="text-base sm:text-lg font-bold text-white leading-snug">
+                ĐĂNG NHẬP HỌC SINH VÀO LÀM BÀI THI
               </h2>
             </div>
           </div>
@@ -794,22 +872,22 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
             <button
               type="button"
               onClick={() => setShowStudentLoginModal(false)}
-              className="px-3 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-xs font-bold text-white cursor-pointer"
+              className="px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-xs font-bold text-white cursor-pointer shrink-0"
             >
               Quay lại
             </button>
           )}
         </div>
 
-        <form onSubmit={handlePortalStudentLogin} className="p-6 space-y-4">
+        <form onSubmit={handlePortalStudentLogin} className="p-4 sm:p-6 space-y-4">
           {loginError && (
-            <div className="p-3.5 rounded-xl bg-red-50 border border-red-300 text-red-900 text-xs font-bold flex items-center gap-2">
+            <div className="p-3.5 rounded-xl bg-red-50 border border-red-300 text-red-900 text-xs sm:text-sm font-bold flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
               <span>{loginError}</span>
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#F4F8FC] p-3.5 rounded-xl border border-slate-200">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#F4F8FC] p-3 sm:p-3.5 rounded-xl border border-slate-200">
             <div>
               <label className="block text-xs font-bold text-[#0D47A1] mb-1">
                 Lọc theo Lớp học:
@@ -820,12 +898,12 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
                   setLoginClassFilter(e.target.value);
                   setLoginSelectedStudentId('');
                 }}
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-[#17365D]"
+                className="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-lg text-sm font-bold text-[#17365D]"
               >
                 <option value="ALL">Tất cả các lớp ({students.length} HS)</option>
                 {distinctStudentClasses.map((cls) => (
                   <option key={cls} value={cls}>
-                    {cls}
+                    Lớp {cls}
                   </option>
                 ))}
               </select>
@@ -835,13 +913,13 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
                 Tìm nhanh tên học sinh:
               </label>
               <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={loginSearchQuery}
                   onChange={(e) => setLoginSearchQuery(e.target.value)}
                   placeholder="Gõ tên hoặc mã HS..."
-                  className="w-full pl-8 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-xs"
+                  className="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-300 rounded-lg text-sm"
                 />
               </div>
             </div>
@@ -857,19 +935,19 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
                 setLoginSelectedStudentId(e.target.value);
                 setLoginError('');
               }}
-              className="w-full px-3.5 py-2.5 bg-white border-2 border-[#168BFA] rounded-xl text-sm font-bold text-[#0D47A1]"
+              className="w-full px-3.5 py-3 bg-white border-2 border-[#168BFA] rounded-xl text-sm sm:text-base font-bold text-[#0D47A1]"
             >
               <option value="">
                 -- Chọn họ và tên học sinh ({filteredLoginStudents.length} học sinh) --
               </option>
               {filteredLoginStudents.map((st, idx) => (
                 <option key={st.id} value={st.id}>
-                  {idx + 1}. {st.fullName} — {st.className} (Mã HS: {st.studentCode})
+                  {idx + 1}. {st.fullName} — Lớp {st.className} (Mã HS: {st.studentCode})
                 </option>
               ))}
             </select>
 
-            <div className="mt-2.5 border border-slate-200 rounded-xl overflow-hidden max-h-44 overflow-y-auto divide-y divide-slate-100">
+            <div className="mt-2.5 border border-slate-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto divide-y divide-slate-100">
               {filteredLoginStudents.map((st, idx) => {
                 const isSelected = st.id === loginSelectedStudentId;
                 return (
@@ -880,17 +958,17 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
                       setLoginSelectedStudentId(st.id);
                       setLoginError('');
                     }}
-                    className={`w-full px-3.5 py-2 text-left text-xs flex items-center justify-between cursor-pointer ${
+                    className={`w-full px-3.5 py-2.5 text-left text-xs sm:text-sm flex items-center justify-between cursor-pointer ${
                       isSelected
                         ? 'bg-[#0D47A1] text-white font-bold'
                         : 'hover:bg-blue-50 text-[#17365D]'
                     }`}
                   >
-                    <span>
+                    <span className="truncate pr-2">
                       {idx + 1}. <strong>{st.fullName}</strong>
                     </span>
-                    <span>
-                      {st.className} · Mã: {st.studentCode}
+                    <span className="shrink-0 text-[11px] sm:text-xs">
+                      {st.className} · {st.studentCode}
                     </span>
                   </button>
                 );
@@ -899,27 +977,14 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
           </div>
 
           {previewChosenStudent && (
-            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-xs text-emerald-950 flex items-center justify-between">
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-xs sm:text-sm text-emerald-950 flex items-center justify-between">
               <div>
-                <p className="font-bold text-sm">Học sinh đã chọn: {previewChosenStudent.fullName}</p>
-                <p>
-                  Lớp: <strong>{previewChosenStudent.className}</strong> · Mã HS:{' '}
+                <p className="font-bold">Học sinh đã chọn: {previewChosenStudent.fullName}</p>
+                <p className="text-xs mt-0.5">
+                  Lớp: <strong>{previewChosenStudent.className}</strong> · Mã học sinh:{' '}
                   <strong>{previewChosenStudent.studentCode}</strong>
                 </p>
               </div>
-              {isTeacherOrAdmin && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setLoginCodeInput(
-                      previewChosenStudent.loginCode || previewChosenStudent.studentCode
-                    )
-                  }
-                  className="px-2.5 py-1 rounded bg-emerald-700 text-white font-bold text-[11px] cursor-pointer"
-                >
-                  GV điền nhanh mã ({previewChosenStudent.loginCode || previewChosenStudent.studentCode})
-                </button>
-              )}
             </div>
           )}
 
@@ -936,15 +1001,15 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
                   setLoginCodeInput(e.target.value);
                   setLoginError('');
                 }}
-                placeholder="Nhập Mã đăng nhập (hoặc Mã học sinh)..."
-                className="w-full pl-10 pr-4 py-2.5 bg-white border-2 border-slate-300 focus:border-[#0D47A1] rounded-xl text-sm font-bold text-[#17365D] focus:outline-none"
+                placeholder="Nhập Mã đăng nhập để vào thi..."
+                className="w-full pl-10 pr-4 py-3 bg-white border-2 border-slate-300 focus:border-[#0D47A1] rounded-xl text-sm sm:text-base font-bold text-[#17365D] focus:outline-none"
               />
             </div>
           </div>
 
           <button
             type="submit"
-            className="w-full py-3 bg-[#FF8A00] hover:bg-[#e67c00] text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full py-3.5 bg-[#FF8A00] hover:bg-[#e67c00] text-white rounded-xl text-sm sm:text-base font-bold flex items-center justify-center gap-2 cursor-pointer shadow-sm"
           >
             <Play className="w-4 h-4" />
             <span>XÁC NHẬN ĐĂNG NHẬP & VÀO PHÒNG THI</span>
@@ -970,21 +1035,21 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Student Session Header */}
-      <div className="bg-white rounded-xl p-5 border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div className="flex items-center gap-3">
-          <div className="p-3 rounded-xl bg-[#0D47A1] text-white">
-            <UserCheck className="w-6 h-6" />
+          <div className="p-2.5 sm:p-3 rounded-xl bg-[#0D47A1] text-white shrink-0">
+            <UserCheck className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-[#0D47A1]">
-              Phân hệ 5: Cổng Kiểm tra Trực tuyến dành cho Học sinh
+            <h2 className="text-base sm:text-xl font-bold text-[#0D47A1]">
+              Cổng Kiểm tra Trực tuyến Học sinh
             </h2>
-            <p className="text-xs text-slate-600">
-              Học sinh đang đăng nhập: <strong className="text-[#0D47A1]">{currentStudent.fullName}</strong>{' '}
-              (Mã HS: <strong>{currentStudent.studentCode}</strong> · Lớp:{' '}
-              <strong>{currentStudent.className}</strong>)
+            <p className="text-xs sm:text-sm text-slate-600 mt-0.5">
+              Học sinh: <strong className="text-[#0D47A1]">{currentStudent.fullName}</strong> (Lớp:{' '}
+              <strong>{currentStudent.className}</strong> · Mã HS:{' '}
+              <strong>{currentStudent.studentCode}</strong>)
             </p>
           </div>
         </div>
@@ -997,17 +1062,17 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
               setLoginError('');
               setShowStudentLoginModal(true);
             }}
-            className="px-3.5 py-2 rounded-lg bg-[#FF8A00] hover:bg-[#e67c00] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+            className="w-full sm:w-auto justify-center px-3.5 py-2.5 rounded-xl bg-[#FF8A00] hover:bg-[#e67c00] text-white text-xs sm:text-sm font-bold flex items-center gap-1.5 cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span>Đổi học sinh / Đăng nhập HS khác</span>
+            <span>Đổi học sinh khác</span>
           </button>
         </div>
       </div>
 
       {portalMessage && (
         <div
-          className={`p-4 rounded-xl border flex items-center justify-between ${
+          className={`p-3.5 sm:p-4 rounded-xl border flex items-center justify-between gap-2 ${
             portalMessage.type === 'success'
               ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
               : portalMessage.type === 'warning'
@@ -1015,17 +1080,17 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
               : 'bg-red-50 border-red-300 text-red-900'
           }`}
         >
-          <div className="flex items-center gap-2 text-sm font-bold">
+          <div className="flex items-center gap-2 text-xs sm:text-sm font-bold">
             {portalMessage.type === 'success' ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-700" />
+              <CheckCircle2 className="w-5 h-5 text-emerald-700 shrink-0" />
             ) : (
-              <AlertTriangle className="w-5 h-5 text-red-700" />
+              <AlertTriangle className="w-5 h-5 text-red-700 shrink-0" />
             )}
             <span>{portalMessage.text}</span>
           </div>
           <button
             onClick={() => setPortalMessage(null)}
-            className="text-xs font-bold underline cursor-pointer"
+            className="text-xs font-bold underline cursor-pointer shrink-0"
           >
             Đóng
           </button>
@@ -1033,18 +1098,18 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
       )}
 
       {/* Assigned Exams for Student's Class */}
-      <div className="bg-white rounded-xl p-5 border border-slate-200 space-y-4">
-        <h3 className="text-base font-bold text-[#0D47A1]">
-          Danh sách Bài kiểm tra được giao cho lớp {currentStudent.className}
+      <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 space-y-4">
+        <h3 className="text-sm sm:text-base font-bold text-[#0D47A1]">
+          Danh sách Bài kiểm tra của lớp {currentStudent.className}
         </h3>
         {myClassAssignments.length === 0 ? (
-          <div className="p-8 text-center bg-[#F4F8FC] rounded-lg border border-dashed border-slate-300">
+          <div className="p-6 sm:p-8 text-center bg-[#F4F8FC] rounded-lg border border-dashed border-slate-300">
             <p className="text-sm font-bold text-slate-600">
               Hiện tại lớp {currentStudent.className} chưa có bài kiểm tra nào đang mở.
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4">
             {myClassAssignments.map((asg) => {
               const attemptsUsed = mySubmissions.filter(
                 (s) =>
@@ -1055,17 +1120,19 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
               return (
                 <div
                   key={asg.id}
-                  className="p-4 rounded-xl bg-[#F4F8FC] border border-slate-200 flex flex-col justify-between space-y-3"
+                  className="p-4 rounded-xl bg-[#F4F8FC] border-2 border-blue-100 flex flex-col justify-between space-y-3"
                 >
                   <div>
                     <div className="flex items-center justify-between text-xs text-slate-500">
                       <span>{asg.examCategory || 'Kiểm tra định kỳ'}</span>
                       <span className="font-bold text-emerald-700">● Đang mở</span>
                     </div>
-                    <h4 className="text-base font-bold text-[#0D47A1] mt-1">{asg.examTitle}</h4>
-                    <p className="text-xs text-slate-600 mt-1">
+                    <h4 className="text-base sm:text-lg font-bold text-[#0D47A1] mt-1">
+                      {asg.examTitle}
+                    </h4>
+                    <p className="text-xs sm:text-sm text-slate-600 mt-1">
                       Thời lượng: <strong>{asg.durationMinutes} phút</strong> · Số câu:{' '}
-                      <strong>{(asg.questionsSnapshot || []).length} câu</strong> · Số lượt đã làm:{' '}
+                      <strong>{(asg.questionsSnapshot || []).length} câu</strong> · Lượt làm:{' '}
                       <strong>
                         {attemptsUsed}/{asg.maxAttempts}
                       </strong>
@@ -1077,10 +1144,10 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
                   <div className="pt-2 border-t border-slate-200 flex justify-end">
                     <button
                       onClick={() => handleStartExam(asg)}
-                      className="px-4 py-2 bg-[#0D47A1] hover:bg-[#168BFA] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                      className="w-full sm:w-auto justify-center px-5 py-3 sm:py-2.5 bg-[#0D47A1] hover:bg-[#168BFA] text-white rounded-xl text-sm font-bold flex items-center gap-2 cursor-pointer shadow-xs"
                     >
-                      <Play className="w-3.5 h-3.5" />
-                      <span>Bắt đầu làm bài</span>
+                      <Play className="w-4 h-4" />
+                      <span>Bắt đầu vào làm bài</span>
                     </button>
                   </div>
                 </div>

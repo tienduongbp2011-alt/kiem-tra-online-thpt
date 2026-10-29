@@ -846,92 +846,98 @@ export default function App() {
           </div>
 
           {/* Right: Supabase SQL Helper, Role Switch, Notifications & Teacher Profile */}
-          <div className="flex items-center gap-2.5 shrink-0">
-            <button
-              onClick={() => setShowSqlModal(true)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-                sbTablesReady
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
-                  : 'bg-[#FF8A00] text-white border-[#FF8A00] hover:bg-[#e67c00]'
-              }`}
-              title="Xem cấu hình bảng SQL Supabase"
-            >
-              <Terminal className="w-3.5 h-3.5" />
-              <span>{sbTablesReady ? 'Supabase: Đã sẵn sàng' : 'Khởi tạo Bảng SQL Supabase'}</span>
-            </button>
-
-            <button
-              onClick={() => loadAllDataFromSupabase()}
-              disabled={sbChecking}
-              className="p-2 rounded-lg bg-[#F4F8FC] hover:bg-blue-50 text-[#0D47A1] border border-slate-200 cursor-pointer"
-              title="Làm mới dữ liệu từ Supabase"
-            >
-              <RefreshCw className={`w-4 h-4 ${sbChecking ? 'animate-spin' : ''}`} />
-            </button>
-
-            {/* Role View Switcher */}
-            <div className="hidden xl:flex items-center bg-[#F4F8FC] p-1 rounded-lg border border-slate-200 text-xs">
-              <button
-                onClick={() => setRoleViewMode('teacher')}
-                className={`px-2.5 py-1 rounded font-bold cursor-pointer ${
-                  roleViewMode === 'teacher' ? 'bg-[#0D47A1] text-white' : 'text-slate-600'
-                }`}
-              >
-                GV Quản trị
-              </button>
-              <button
-                onClick={() => {
-                  setRoleViewMode('student');
-                  setActiveTab('student_portal');
-                }}
-                className={`px-2.5 py-1 rounded font-bold cursor-pointer ${
-                  roleViewMode === 'student' ? 'bg-[#168BFA] text-white' : 'text-slate-600'
-                }`}
-              >
-                Giao diện HS
-              </button>
-            </div>
-
-            {/* Notification Bell */}
-            <div className="relative">
-              <button
-                onClick={() => setShowNotifDropdown(!showNotifDropdown)}
-                className="p-2 rounded-lg bg-[#F4F8FC] hover:bg-blue-50 text-[#0D47A1] border border-slate-200 relative cursor-pointer"
-                aria-label="Thông báo"
-              >
-                <Bell className="w-5 h-5" />
-                {notifications.some((n) => !n.isRead) && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#FF8A00] text-white text-[10px] font-bold flex items-center justify-center">
-                    {notifications.filter((n) => !n.isRead).length}
+          <div className="flex items-center gap-2 shrink-0">
+            {roleViewMode === 'teacher' && (
+              <>
+                <button
+                  onClick={() => setShowSqlModal(true)}
+                  className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    sbTablesReady
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                      : 'bg-[#FF8A00] text-white border-[#FF8A00] hover:bg-[#e67c00]'
+                  }`}
+                  title="Xem cấu hình bảng SQL Supabase"
+                >
+                  <Terminal className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">
+                    {sbTablesReady ? 'Supabase: Đã sẵn sàng' : 'Khởi tạo Bảng SQL Supabase'}
                   </span>
-                )}
-              </button>
+                </button>
 
-              {showNotifDropdown && (
-                <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-slate-200 p-4 z-50 space-y-2">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                    <span className="text-xs font-bold text-[#0D47A1]">Thông báo hệ thống</span>
-                    <button
-                      onClick={() =>
-                        setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })))
-                      }
-                      className="text-[11px] text-[#168BFA] font-bold hover:underline cursor-pointer"
-                    >
-                      Đánh dấu đã đọc
-                    </button>
-                  </div>
-                  {notifications.map((n) => (
-                    <div key={n.id} className="text-xs p-2 rounded bg-[#F4F8FC]">
-                      <p className="font-bold text-[#0D47A1]">{n.title}</p>
-                      <p className="text-slate-600 mt-0.5">{n.message}</p>
+                <button
+                  onClick={() => loadAllDataFromSupabase()}
+                  disabled={sbChecking}
+                  className="p-2 rounded-lg bg-[#F4F8FC] hover:bg-blue-50 text-[#0D47A1] border border-slate-200 cursor-pointer"
+                  title="Làm mới dữ liệu từ Supabase"
+                >
+                  <RefreshCw className={`w-4 h-4 ${sbChecking ? 'animate-spin' : ''}`} />
+                </button>
+              </>
+            )}
+
+            {/* Role View Switcher (Teacher Only) */}
+            {roleViewMode === 'teacher' && (
+              <div className="hidden xl:flex items-center bg-[#F4F8FC] p-1 rounded-lg border border-slate-200 text-xs">
+                <button
+                  onClick={() => setRoleViewMode('teacher')}
+                  className="px-2.5 py-1 rounded font-bold cursor-pointer bg-[#0D47A1] text-white"
+                >
+                  GV Quản trị
+                </button>
+                <button
+                  onClick={() => {
+                    setRoleViewMode('student');
+                    setActiveTab('student_portal');
+                  }}
+                  className="px-2.5 py-1 rounded font-bold cursor-pointer text-slate-600"
+                >
+                  Giao diện HS
+                </button>
+              </div>
+            )}
+
+            {/* Notification Bell (Teacher Only) */}
+            {roleViewMode === 'teacher' && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowNotifDropdown(!showNotifDropdown)}
+                  className="p-2 rounded-lg bg-[#F4F8FC] hover:bg-blue-50 text-[#0D47A1] border border-slate-200 relative cursor-pointer"
+                  aria-label="Thông báo"
+                >
+                  <Bell className="w-5 h-5" />
+                  {notifications.some((n) => !n.isRead) && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#FF8A00] text-white text-[10px] font-bold flex items-center justify-center">
+                      {notifications.filter((n) => !n.isRead).length}
+                    </span>
+                  )}
+                </button>
+
+                {showNotifDropdown && (
+                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-slate-200 p-4 z-50 space-y-2">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <span className="text-xs font-bold text-[#0D47A1]">Thông báo hệ thống</span>
+                      <button
+                        onClick={() =>
+                          setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })))
+                        }
+                        className="text-[11px] text-[#168BFA] font-bold hover:underline cursor-pointer"
+                      >
+                        Đánh dấu đã đọc
+                      </button>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                    {notifications.map((n) => (
+                      <div key={n.id} className="text-xs p-2 rounded bg-[#F4F8FC]">
+                        <p className="font-bold text-[#0D47A1]">{n.title}</p>
+                        <p className="text-slate-600 mt-0.5">{n.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Teacher or Student Account & Logout to Login Gate */}
-            <div className="flex items-center gap-2.5 pl-2 border-l border-slate-200">
+            <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
               {roleViewMode === 'teacher' ? (
                 <>
                   <TeacherAvatarSvg className="w-9 h-9 hidden sm:block" />
@@ -945,13 +951,13 @@ export default function App() {
                   </div>
                 </>
               ) : (
-                <div className="hidden md:block text-left">
+                <div className="hidden sm:block text-left">
                   <p className="text-xs font-bold text-[#0D47A1] leading-none">
                     HS: {currentLoggedStudent?.fullName || 'Học sinh'}
                   </p>
                   <p className="text-[11px] text-[#168BFA] font-semibold mt-0.5">
                     {currentLoggedStudent
-                      ? `${currentLoggedStudent.className} · Mã: ${currentLoggedStudent.studentCode}`
+                      ? `${currentLoggedStudent.className} · ${currentLoggedStudent.studentCode}`
                       : 'Phòng thi trực tuyến'}
                   </p>
                 </div>
@@ -959,39 +965,41 @@ export default function App() {
 
               <button
                 onClick={() => setShowLoginGate(true)}
-                className="px-3 py-1.5 rounded-lg bg-[#0D47A1] hover:bg-[#168BFA] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                title="Quay về Màn hình 2 Cửa sổ Đăng nhập (Học sinh & Giáo viên)"
+                className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-[#0D47A1] hover:bg-[#168BFA] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                title="Quay về Màn hình Đăng nhập"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                <span>Cổng Đăng nhập (HS / GV)</span>
+                <span className="hidden xs:inline sm:inline">Đăng xuất</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Supabase Status Bar */}
-        <div
-          className={`px-4 lg:px-6 py-1.5 text-xs flex flex-wrap items-center justify-between gap-2 border-t ${
-            sbTablesReady
-              ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
-              : 'bg-amber-50 border-amber-200 text-amber-950'
-          }`}
-        >
-          <div className="flex items-center gap-2 font-semibold">
-            <Cloud className="w-3.5 h-3.5 shrink-0" />
-            <span>
-              <strong>[CƠ SỞ DỮ LIỆU SUPABASE]:</strong> {sbStatusMsg}
-            </span>
+        {/* Supabase Status Bar (Teacher Mode Only) */}
+        {roleViewMode === 'teacher' && (
+          <div
+            className={`px-4 lg:px-6 py-1.5 text-xs flex flex-wrap items-center justify-between gap-2 border-t ${
+              sbTablesReady
+                ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
+                : 'bg-amber-50 border-amber-200 text-amber-950'
+            }`}
+          >
+            <div className="flex items-center gap-2 font-semibold">
+              <Cloud className="w-3.5 h-3.5 shrink-0" />
+              <span>
+                <strong>[CƠ SỞ DỮ LIỆU SUPABASE]:</strong> {sbStatusMsg}
+              </span>
+            </div>
+            {!sbTablesReady && (
+              <button
+                onClick={() => setShowSqlModal(true)}
+                className="font-bold text-[#0D47A1] underline cursor-pointer shrink-0"
+              >
+                Mở mã lệnh SQL khởi tạo bảng trên Supabase →
+              </button>
+            )}
           </div>
-          {!sbTablesReady && (
-            <button
-              onClick={() => setShowSqlModal(true)}
-              className="font-bold text-[#0D47A1] underline cursor-pointer shrink-0"
-            >
-              Mở mã lệnh SQL khởi tạo bảng trên Supabase →
-            </button>
-          )}
-        </div>
+        )}
       </header>
 
       {/* MAIN WORKSPACE: LEFT SIDEBAR + MAIN CONTENT */}
@@ -1064,7 +1072,7 @@ export default function App() {
         </aside>
 
         {/* C. MAIN CONTENT VIEWPORT */}
-        <main className="flex-1 p-4 md:p-6 max-w-[1600px] w-full mx-auto space-y-6">
+        <main className="flex-1 p-3 sm:p-4 md:p-6 max-w-[1600px] w-full mx-auto space-y-4 sm:space-y-6">
           {appAlert && (
             <div
               className={`p-4 rounded-xl border flex items-center justify-between ${
