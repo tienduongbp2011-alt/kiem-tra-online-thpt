@@ -535,21 +535,21 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
                   className="px-3 py-2 bg-[#F4F8FC] hover:bg-blue-50 text-[#0D47A1] border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Tải tệp mẫu CSV</span>
+                  <span>Tải tệp mẫu Excel (.xlsx)</span>
                 </button>
                 <button
                   onClick={() => setShowCsvModal(true)}
                   className="px-3 py-2 bg-[#F4F8FC] hover:bg-blue-50 text-[#0D47A1] border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                 >
                   <Upload className="w-3.5 h-3.5" />
-                  <span>Nhập từ CSV / Excel</span>
+                  <span>Nhập từ tệp Excel (.xlsx)</span>
                 </button>
                 <button
                   onClick={handleExportStudents}
                   className="px-3 py-2 bg-[#F4F8FC] hover:bg-blue-50 text-[#0D47A1] border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Xuất danh sách CSV</span>
+                  <span>Xuất danh sách Excel (.xlsx)</span>
                 </button>
                 <button
                   onClick={openAddStudent}
@@ -582,7 +582,7 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
                 Chưa có học sinh nào phù hợp với bộ lọc
               </p>
               <p className="text-xs text-slate-500 mt-1">
-                Giáo viên có thể nhấn &quot;Thêm học sinh&quot; hoặc &quot;Nhập từ CSV / Excel&quot; để tạo danh sách học sinh.
+                Giáo viên có thể nhấn &quot;Thêm học sinh&quot; hoặc &quot;Nhập từ tệp Excel (.xlsx)&quot; để tạo danh sách học sinh.
               </p>
             </div>
           ) : (
@@ -623,9 +623,6 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
                         </td>
                         <td className="py-3 px-4 font-semibold text-[#17365D]">
                           {st.fullName}
-                          {st.isDemo && (
-                            <span className="ml-2 text-xs text-[#FF8A00] font-bold">[DEMO]</span>
-                          )}
                         </td>
                         <td className="py-3 px-4 text-slate-600 tabular-nums">
                           {st.birthDate || '—'}

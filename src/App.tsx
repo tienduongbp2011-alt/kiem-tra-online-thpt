@@ -50,17 +50,7 @@ import {
   Submission,
   SystemSetting,
 } from './types';
-import {
-  createDemoAssignments,
-  createDemoClasses,
-  createDemoExams,
-  createDemoLearningPlans,
-  createDemoQuestions,
-  createDemoResources,
-  createDemoStudents,
-  createDemoSubmissions,
-  DEFAULT_SYSTEM_SETTINGS,
-} from './data/demoSeedData';
+import { DEFAULT_SYSTEM_SETTINGS } from './data/demoSeedData';
 import { SchoolBookTechLogo, TeacherAvatarSvg } from './components/BrandIllustrations';
 import { OverviewDashboard } from './components/OverviewDashboard';
 import { ClassesAndStudentsView } from './components/ClassesAndStudentsView';
@@ -106,7 +96,6 @@ export default function App() {
   const [fbUser, setFbUser] = useState<FirebaseUser | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [roleViewMode, setRoleViewMode] = useState<'teacher' | 'student'>('teacher');
-  const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
 
   // Notifications dropdown
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
@@ -123,43 +112,6 @@ export default function App() {
   const [cloudResources, setCloudResources] = useState<LearningResource[]>([]);
   const [cloudLogs, setCloudLogs] = useState<AuditLogItem[]>([]);
   const [cloudSettings, setCloudSettings] = useState<SystemSetting>(DEFAULT_SYSTEM_SETTINGS);
-
-  // Isolated Demo State (Only used when isDemoMode === true)
-  const [demoClasses, setDemoClasses] = useState<ClassRoom[]>(() => createDemoClasses('demo_teacher'));
-  const [demoStudents, setDemoStudents] = useState<Student[]>(() => createDemoStudents('demo_teacher'));
-  const [demoQuestions, setDemoQuestions] = useState<Question[]>(() =>
-    createDemoQuestions('demo_teacher')
-  );
-  const [demoExamsState, setDemoExamsState] = useState<{
-    exams: Exam[];
-    answerKeys: ExamAnswerKey[];
-  }>(() => createDemoExams('demo_teacher', createDemoQuestions('demo_teacher')));
-  const [demoAssignments, setDemoAssignments] = useState<Assignment[]>(() =>
-    createDemoAssignments(
-      'demo_teacher',
-      createDemoExams('demo_teacher', createDemoQuestions('demo_teacher')).exams
-    )
-  );
-  const [demoSubmissions, setDemoSubmissions] = useState<Submission[]>(() =>
-    createDemoSubmissions('demo_teacher')
-  );
-  const [demoPlans, setDemoPlans] = useState<LearningPlan[]>(() =>
-    createDemoLearningPlans('demo_teacher')
-  );
-  const [demoResources, setDemoResources] = useState<LearningResource[]>(() =>
-    createDemoResources('demo_teacher')
-  );
-  const [demoLogs, setDemoLogs] = useState<AuditLogItem[]>([
-    {
-      id: 'demo_log_1',
-      action: 'Khởi tạo dữ liệu trình diễn [DEMO]',
-      module: 'Hệ thống',
-      actorName: 'Nguyễn Tiến Dương',
-      actorUid: 'demo_teacher',
-      details: 'Dữ liệu mẫu tách biệt hoàn toàn với dữ liệu học sinh thật',
-      createdAt: '2026-10-23T08:00:00.000Z',
-    },
-  ]);
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([
     {
@@ -373,117 +325,51 @@ export default function App() {
     };
   }, [authReady, fbUser, isVerifiedTeacherUser]);
 
-  // Active Datasets (Strictly separated between Real Firestore and Demo Mode)
-  const activeClasses = isDemoMode ? demoClasses : cloudClasses;
-  const activeStudents = isDemoMode ? demoStudents : cloudStudents;
-  const activeQuestions = isDemoMode ? demoQuestions : cloudQuestions;
-  const activeExams = isDemoMode ? demoExamsState.exams : cloudExams;
-  const activeAnswerKeys = isDemoMode ? demoExamsState.answerKeys : cloudAnswerKeys;
-  const activeAssignments = isDemoMode ? demoAssignments : cloudAssignments;
-  const activeSubmissions = isDemoMode ? demoSubmissions : cloudSubmissions;
-  const activePlans = isDemoMode ? demoPlans : cloudPlans;
-  const activeResources = isDemoMode ? demoResources : cloudResources;
-  const activeLogs = isDemoMode ? demoLogs : cloudLogs;
+  // Active Datasets (Real Cloud Firestore Data)
+  const activeClasses = cloudClasses;
+  const activeStudents = cloudStudents;
+  const activeQuestions = cloudQuestions;
+  const activeExams = cloudExams;
+  const activeAnswerKeys = cloudAnswerKeys;
+  const activeAssignments = cloudAssignments;
+  const activeSubmissions = cloudSubmissions;
+  const activePlans = cloudPlans;
+  const activeResources = cloudResources;
+  const activeLogs = cloudLogs;
 
   const isTeacherOrAdmin = roleViewMode === 'teacher';
 
   const recordAudit = useCallback(
     async (action: string, module: string, details?: string) => {
+      if (!fbUser) return;
       const now = new Date().toISOString();
       const entry: AuditLogItem = {
         id: `log_${Date.now()}`,
         action: action.slice(0, 140),
         module: module.slice(0, 75),
-        actorName: fbUser?.displayName || 'Nguyễn Tiến Dương',
-        actorUid: fbUser?.uid || 'demo_teacher',
+        actorName: fbUser.displayName || 'Nguyễn Tiến Dương',
+        actorUid: fbUser.uid,
         details: details?.slice(0, 950),
         createdAt: now,
       };
-      if (isDemoMode || !fbUser) {
-        setDemoLogs((prev) => [entry, ...prev]);
-      } else {
-        await safeCreateOrSetDoc(
-          'audit_logs',
-          entry.id,
-          entry as unknown as Record<string, unknown>,
-          OperationType.CREATE
-        );
-      }
+      await safeCreateOrSetDoc(
+        'audit_logs',
+        entry.id,
+        entry as unknown as Record<string, unknown>,
+        OperationType.CREATE
+      );
     },
-    [fbUser, isDemoMode]
+    [fbUser]
   );
 
-  // Seed Demo Dataset into Cloud Firestore if teacher clicks button
-  const handleSeedDemoToFirestore = async () => {
-    if (!fbUser || !isVerifiedTeacherUser) {
-      setAppAlert({
-        type: 'error',
-        text: 'Vui lòng đăng nhập bằng tài khoản Giáo viên quản trị (tienduongbp2011@gmail.com) để khởi tạo dữ liệu lên Cloud Firestore.',
-      });
-      return;
-    }
-    const uid = fbUser.uid;
-    const classesToSeed = createDemoClasses(uid);
-    const studentsToSeed = createDemoStudents(uid);
-    const questionsToSeed = createDemoQuestions(uid);
-    const { exams: examsToSeed, answerKeys: keysToSeed } = createDemoExams(uid, questionsToSeed);
-    const assignmentsToSeed = createDemoAssignments(uid, examsToSeed);
-    const submissionsToSeed = createDemoSubmissions(uid);
-    const plansToSeed = createDemoLearningPlans(uid);
-    const resourcesToSeed = createDemoResources(uid);
-
-    for (const c of classesToSeed) {
-      await safeCreateOrSetDoc('classes', c.id, c as unknown as Record<string, unknown>);
-    }
-    for (const s of studentsToSeed) {
-      await safeCreateOrSetDoc('students', s.id, s as unknown as Record<string, unknown>);
-    }
-    for (const q of questionsToSeed) {
-      await safeCreateOrSetDoc('question_bank', q.id, q as unknown as Record<string, unknown>);
-    }
-    for (const ex of examsToSeed) {
-      await safeCreateOrSetDoc('exams', ex.id, ex as unknown as Record<string, unknown>);
-    }
-    for (const k of keysToSeed) {
-      await safeCreateOrSetDoc(
-        'exam_answer_keys',
-        k.examId,
-        k as unknown as Record<string, unknown>
-      );
-    }
-    for (const a of assignmentsToSeed) {
-      await safeCreateOrSetDoc('assignments', a.id, a as unknown as Record<string, unknown>);
-    }
-    for (const sub of submissionsToSeed) {
-      await safeCreateOrSetDoc('submissions', sub.id, sub as unknown as Record<string, unknown>);
-    }
-    for (const p of plansToSeed) {
-      await safeCreateOrSetDoc('learning_plans', p.id, p as unknown as Record<string, unknown>);
-    }
-    for (const r of resourcesToSeed) {
-      await safeCreateOrSetDoc('learning_resources', r.id, r as unknown as Record<string, unknown>);
-    }
-
-    await recordAudit(
-      'Khởi tạo dữ liệu mẫu [DỮ LIỆU DEMO] lên Cloud Firestore',
-      'Hệ thống',
-      'Đã nạp bộ dữ liệu mẫu có gắn nhãn DEMO'
-    );
-    setAppAlert({
-      type: 'info',
-      text: 'Đã khởi tạo thành công bộ dữ liệu mẫu [DỮ LIỆU DEMO] vào Cloud Firestore.',
-    });
-  };
-
   // =========================================================================
-  // CRUD Handlers supporting both Cloud Firestore (when logged in) and Demo Mode
+  // CRUD Handlers for Real Cloud Firestore Data
   // =========================================================================
   const ensureCanWrite = (): boolean => {
-    if (isDemoMode) return true;
     if (!fbUser) {
       setAppAlert({
         type: 'error',
-        text: 'Chưa đăng nhập Cloud Firestore! Vui lòng nhấn "Đăng nhập Google" ở góc trên bên phải để lưu dữ liệu thật, hoặc bật chế độ "DỮ LIỆU DEMO" để thao tác thử nghiệm.',
+        text: 'Chưa đăng nhập Cloud Firestore! Vui lòng nhấn "Đăng nhập Google" ở góc trên bên phải để lưu dữ liệu vào hệ thống.',
       });
       return false;
     }
@@ -500,37 +386,27 @@ export default function App() {
     const record: ClassRoom = {
       ...clsData,
       id,
-      ownerId: fbUser?.uid || 'demo_teacher',
+      ownerId: fbUser!.uid,
       createdAt: now,
       updatedAt: now,
     };
 
-    if (isDemoMode) {
-      setDemoClasses((prev) =>
-        editId ? prev.map((c) => (c.id === editId ? { ...record, createdAt: c.createdAt } : c)) : [...prev, record]
-      );
+    if (editId) {
+      const existing = cloudClasses.find((c) => c.id === editId);
+      await safeUpdateDoc('classes', editId, {
+        ...record,
+        ownerId: existing?.ownerId || fbUser!.uid,
+        createdAt: existing?.createdAt || now,
+      });
     } else {
-      if (editId) {
-        const existing = cloudClasses.find((c) => c.id === editId);
-        await safeUpdateDoc('classes', editId, {
-          ...record,
-          ownerId: existing?.ownerId || fbUser!.uid,
-          createdAt: existing?.createdAt || now,
-        });
-      } else {
-        await safeCreateOrSetDoc('classes', id, record as unknown as Record<string, unknown>);
-      }
+      await safeCreateOrSetDoc('classes', id, record as unknown as Record<string, unknown>);
     }
     await recordAudit(editId ? 'Cập nhật lớp học' : 'Tạo lớp học mới', 'Lớp học', record.name);
   };
 
   const handleDeleteClass = async (classId: string) => {
     if (!ensureCanWrite()) return;
-    if (isDemoMode) {
-      setDemoClasses((prev) => prev.filter((c) => c.id !== classId));
-    } else {
-      await safeDeleteDoc('classes', classId);
-    }
+    await safeDeleteDoc('classes', classId);
     await recordAudit('Xóa lớp học', 'Lớp học', classId);
   };
 
@@ -544,27 +420,21 @@ export default function App() {
     const record: Student = {
       ...stData,
       id,
-      studentUid: stData.studentUid || fbUser?.uid || 'demo_teacher',
-      ownerId: fbUser?.uid || 'demo_teacher',
+      studentUid: stData.studentUid || fbUser!.uid,
+      ownerId: fbUser!.uid,
       createdAt: now,
       updatedAt: now,
     };
 
-    if (isDemoMode) {
-      setDemoStudents((prev) =>
-        editId ? prev.map((s) => (s.id === editId ? { ...record, createdAt: s.createdAt } : s)) : [...prev, record]
-      );
+    if (editId) {
+      const existing = cloudStudents.find((s) => s.id === editId);
+      await safeUpdateDoc('students', editId, {
+        ...record,
+        ownerId: existing?.ownerId || fbUser!.uid,
+        createdAt: existing?.createdAt || now,
+      });
     } else {
-      if (editId) {
-        const existing = cloudStudents.find((s) => s.id === editId);
-        await safeUpdateDoc('students', editId, {
-          ...record,
-          ownerId: existing?.ownerId || fbUser!.uid,
-          createdAt: existing?.createdAt || now,
-        });
-      } else {
-        await safeCreateOrSetDoc('students', id, record as unknown as Record<string, unknown>);
-      }
+      await safeCreateOrSetDoc('students', id, record as unknown as Record<string, unknown>);
     }
     await recordAudit(
       editId ? 'Cập nhật học sinh' : 'Thêm học sinh mới',
@@ -575,11 +445,7 @@ export default function App() {
 
   const handleDeleteStudent = async (studentId: string) => {
     if (!ensureCanWrite()) return;
-    if (isDemoMode) {
-      setDemoStudents((prev) => prev.filter((s) => s.id !== studentId));
-    } else {
-      await safeDeleteDoc('students', studentId);
-    }
+    await safeDeleteDoc('students', studentId);
     await recordAudit('Xóa học sinh', 'Học sinh', studentId);
   };
 
@@ -594,19 +460,15 @@ export default function App() {
       const record: Student = {
         ...st,
         id,
-        studentUid: fbUser?.uid || 'demo_teacher',
-        ownerId: fbUser?.uid || 'demo_teacher',
+        studentUid: fbUser!.uid,
+        ownerId: fbUser!.uid,
         createdAt: now,
         updatedAt: now,
       };
-      if (isDemoMode) {
-        setDemoStudents((prev) => [...prev, record]);
-      } else {
-        await safeCreateOrSetDoc('students', id, record as unknown as Record<string, unknown>);
-      }
+      await safeCreateOrSetDoc('students', id, record as unknown as Record<string, unknown>);
     }
     await recordAudit(
-      'Nhập danh sách học sinh từ CSV',
+      'Nhập danh sách học sinh từ Excel',
       'Học sinh',
       `Số lượng: ${validStudents.length} học sinh`
     );
@@ -622,26 +484,20 @@ export default function App() {
     const record: Question = {
       ...qData,
       id,
-      ownerId: fbUser?.uid || 'demo_teacher',
+      ownerId: fbUser!.uid,
       createdAt: now,
       updatedAt: now,
     };
 
-    if (isDemoMode) {
-      setDemoQuestions((prev) =>
-        editId ? prev.map((q) => (q.id === editId ? { ...record, createdAt: q.createdAt } : q)) : [record, ...prev]
-      );
+    if (editId) {
+      const existing = cloudQuestions.find((q) => q.id === editId);
+      await safeUpdateDoc('question_bank', editId, {
+        ...record,
+        ownerId: existing?.ownerId || fbUser!.uid,
+        createdAt: existing?.createdAt || now,
+      });
     } else {
-      if (editId) {
-        const existing = cloudQuestions.find((q) => q.id === editId);
-        await safeUpdateDoc('question_bank', editId, {
-          ...record,
-          ownerId: existing?.ownerId || fbUser!.uid,
-          createdAt: existing?.createdAt || now,
-        });
-      } else {
-        await safeCreateOrSetDoc('question_bank', id, record as unknown as Record<string, unknown>);
-      }
+      await safeCreateOrSetDoc('question_bank', id, record as unknown as Record<string, unknown>);
     }
     await recordAudit(
       editId ? 'Cập nhật câu hỏi' : 'Thêm câu hỏi mới',
@@ -652,11 +508,7 @@ export default function App() {
 
   const handleDeleteQuestion = async (id: string) => {
     if (!ensureCanWrite()) return;
-    if (isDemoMode) {
-      setDemoQuestions((prev) => prev.filter((q) => q.id !== id));
-    } else {
-      await safeDeleteDoc('question_bank', id);
-    }
+    await safeDeleteDoc('question_bank', id);
     await recordAudit('Xóa câu hỏi', 'Ngân hàng câu hỏi', id);
   };
 
@@ -671,61 +523,39 @@ export default function App() {
     const examRecord: Exam = {
       ...examData,
       id,
-      ownerId: fbUser?.uid || 'demo_teacher',
+      ownerId: fbUser!.uid,
       createdAt: now,
       updatedAt: now,
     };
     const keyRecord: ExamAnswerKey = {
       ...keyData,
       examId: id,
-      ownerId: fbUser?.uid || 'demo_teacher',
+      ownerId: fbUser!.uid,
       createdAt: now,
       updatedAt: now,
     };
 
-    if (isDemoMode) {
-      setDemoExamsState((prev) => {
-        const exists = prev.exams.some((e) => e.id === id);
-        return {
-          exams: exists
-            ? prev.exams.map((e) => (e.id === id ? { ...examRecord, createdAt: e.createdAt } : e))
-            : [examRecord, ...prev.exams],
-          answerKeys: [
-            ...prev.answerKeys.filter((k) => k.examId !== id),
-            keyRecord,
-          ],
-        };
+    const existingExam = cloudExams.find((e) => e.id === id);
+    if (existingExam) {
+      await safeUpdateDoc('exams', id, {
+        ...examRecord,
+        ownerId: existingExam.ownerId,
+        createdAt: existingExam.createdAt,
       });
     } else {
-      const existingExam = cloudExams.find((e) => e.id === id);
-      if (existingExam) {
-        await safeUpdateDoc('exams', id, {
-          ...examRecord,
-          ownerId: existingExam.ownerId,
-          createdAt: existingExam.createdAt,
-        });
-      } else {
-        await safeCreateOrSetDoc('exams', id, examRecord as unknown as Record<string, unknown>);
-      }
-      await safeCreateOrSetDoc(
-        'exam_answer_keys',
-        id,
-        keyRecord as unknown as Record<string, unknown>
-      );
+      await safeCreateOrSetDoc('exams', id, examRecord as unknown as Record<string, unknown>);
     }
+    await safeCreateOrSetDoc(
+      'exam_answer_keys',
+      id,
+      keyRecord as unknown as Record<string, unknown>
+    );
     await recordAudit('Lưu đề kiểm tra & Ma trận', 'Đề kiểm tra', examRecord.title);
   };
 
   const handleDeleteExam = async (examId: string) => {
     if (!ensureCanWrite()) return;
-    if (isDemoMode) {
-      setDemoExamsState((prev) => ({
-        exams: prev.exams.filter((e) => e.id !== examId),
-        answerKeys: prev.answerKeys.filter((k) => k.examId !== examId),
-      }));
-    } else {
-      await safeDeleteDoc('exams', examId);
-    }
+    await safeDeleteDoc('exams', examId);
     await recordAudit('Xóa đề kiểm tra', 'Đề kiểm tra', examId);
   };
 
@@ -738,16 +568,12 @@ export default function App() {
     const record: Assignment = {
       ...asgData,
       id,
-      ownerId: fbUser?.uid || 'demo_teacher',
+      ownerId: fbUser!.uid,
       createdAt: now,
       updatedAt: now,
     };
 
-    if (isDemoMode) {
-      setDemoAssignments((prev) => [record, ...prev]);
-    } else {
-      await safeCreateOrSetDoc('assignments', id, record as unknown as Record<string, unknown>);
-    }
+    await safeCreateOrSetDoc('assignments', id, record as unknown as Record<string, unknown>);
     await recordAudit(
       'Giao bài kiểm tra cho lớp',
       'Kiểm tra trực tuyến',
@@ -759,39 +585,28 @@ export default function App() {
     subData: Omit<Submission, 'id' | 'createdAt' | 'updatedAt' | 'ownerId'>,
     existingId?: string
   ): Promise<string> => {
+    if (!ensureCanWrite()) return existingId || '';
     const now = new Date().toISOString();
     const id = existingId || `sub_${Date.now()}`;
     const record: Submission = {
       ...subData,
       id,
-      studentUid: fbUser?.uid || 'demo_teacher',
-      ownerId: fbUser?.uid || 'demo_teacher',
+      studentUid: fbUser!.uid,
+      ownerId: fbUser!.uid,
       createdAt: now,
       updatedAt: now,
     };
 
-    if (isDemoMode || !fbUser) {
-      if (!isDemoMode && !fbUser) {
-        setIsDemoMode(true);
-      }
-      setDemoSubmissions((prev) => {
-        const exists = prev.some((s) => s.id === id);
-        return exists
-          ? prev.map((s) => (s.id === id ? { ...record, createdAt: s.createdAt } : s))
-          : [record, ...prev];
+    const existing = cloudSubmissions.find((s) => s.id === id);
+    if (existing) {
+      await safeUpdateDoc('submissions', id, {
+        ...record,
+        ownerId: existing.ownerId,
+        studentUid: existing.studentUid,
+        createdAt: existing.createdAt,
       });
     } else {
-      const existing = cloudSubmissions.find((s) => s.id === id);
-      if (existing) {
-        await safeUpdateDoc('submissions', id, {
-          ...record,
-          ownerId: existing.ownerId,
-          studentUid: existing.studentUid,
-          createdAt: existing.createdAt,
-        });
-      } else {
-        await safeCreateOrSetDoc('submissions', id, record as unknown as Record<string, unknown>);
-      }
+      await safeCreateOrSetDoc('submissions', id, record as unknown as Record<string, unknown>);
     }
 
     if (subData.status === 'Đã nộp' || subData.status === 'Chờ chấm' || subData.status === 'Đã chấm') {
@@ -834,11 +649,7 @@ export default function App() {
       updatedAt: now,
     };
 
-    if (isDemoMode) {
-      setDemoSubmissions((prev) => prev.map((s) => (s.id === submission.id ? updated : s)));
-    } else {
-      await safeUpdateDoc('submissions', submission.id, updated as unknown as Record<string, unknown>);
-    }
+    await safeUpdateDoc('submissions', submission.id, updated as unknown as Record<string, unknown>);
 
     await recordAudit(
       'Chấm bài / Điều chỉnh điểm số',
@@ -856,25 +667,17 @@ export default function App() {
     const record: LearningPlan = {
       ...planData,
       id,
-      ownerId: fbUser?.uid || 'demo_teacher',
+      ownerId: fbUser!.uid,
       createdAt: now,
       updatedAt: now,
     };
-    if (isDemoMode) {
-      setDemoPlans((prev) => [record, ...prev]);
-    } else {
-      await safeCreateOrSetDoc('learning_plans', id, record as unknown as Record<string, unknown>);
-    }
+    await safeCreateOrSetDoc('learning_plans', id, record as unknown as Record<string, unknown>);
     await recordAudit('Tạo kế hoạch ôn tập', 'Kế hoạch ôn tập', record.title);
   };
 
   const handleDeleteLearningPlan = async (id: string) => {
     if (!ensureCanWrite()) return;
-    if (isDemoMode) {
-      setDemoPlans((prev) => prev.filter((p) => p.id !== id));
-    } else {
-      await safeDeleteDoc('learning_plans', id);
-    }
+    await safeDeleteDoc('learning_plans', id);
   };
 
   const handleSaveResource = async (
@@ -886,29 +689,21 @@ export default function App() {
     const record: LearningResource = {
       ...resData,
       id,
-      ownerId: fbUser?.uid || 'demo_teacher',
+      ownerId: fbUser!.uid,
       createdAt: now,
       updatedAt: now,
     };
-    if (isDemoMode) {
-      setDemoResources((prev) => [record, ...prev]);
-    } else {
-      await safeCreateOrSetDoc(
-        'learning_resources',
-        id,
-        record as unknown as Record<string, unknown>
-      );
-    }
+    await safeCreateOrSetDoc(
+      'learning_resources',
+      id,
+      record as unknown as Record<string, unknown>
+    );
     await recordAudit('Thêm học liệu mới', 'Tài liệu - Học liệu', record.title);
   };
 
   const handleDeleteResource = async (id: string) => {
     if (!ensureCanWrite()) return;
-    if (isDemoMode) {
-      setDemoResources((prev) => prev.filter((r) => r.id !== id));
-    } else {
-      await safeDeleteDoc('learning_resources', id);
-    }
+    await safeDeleteDoc('learning_resources', id);
   };
 
   const handleSaveSettings = async (newSettings: SystemSetting) => {
@@ -916,11 +711,11 @@ export default function App() {
     const now = new Date().toISOString();
     const updated: SystemSetting = {
       ...newSettings,
-      ownerId: fbUser?.uid || 'demo_teacher',
+      ownerId: fbUser!.uid,
       updatedAt: now,
     };
     setCloudSettings(updated);
-    if (!isDemoMode && fbUser) {
+    if (fbUser) {
       await safeCreateOrSetDoc(
         'system_settings',
         'default_settings',
@@ -935,7 +730,6 @@ export default function App() {
       exportedAt: new Date().toISOString(),
       school: cloudSettings.schoolName,
       teacher: cloudSettings.teacherName,
-      isDemoMode,
       classes: activeClasses,
       students: activeStudents,
       questions: activeQuestions,
@@ -1001,22 +795,9 @@ export default function App() {
             </div>
           </div>
 
-          {/* Right: Demo Mode Switch, Role Switch, Notifications & Teacher Account */}
+          {/* Right: Role Switch, Notifications & Teacher Account */}
           <div className="flex items-center gap-2.5 shrink-0">
-            {/* Demo vs Real Data Switch */}
-            <button
-              onClick={() => setIsDemoMode(!isDemoMode)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors cursor-pointer whitespace-nowrap ${
-                isDemoMode
-                  ? 'bg-[#FF8A00] text-white border-[#FF8A00]'
-                  : 'bg-[#F4F8FC] text-[#0D47A1] border-blue-200 hover:bg-blue-50'
-              }`}
-              title="Bật/tắt chế độ trình diễn DỮ LIỆU DEMO tách biệt với dữ liệu thật"
-            >
-              {isDemoMode ? 'Đang bật: DỮ LIỆU DEMO' : 'Chế độ: DỮ LIỆU THẬT'}
-            </button>
-
-            {/* Role View Switcher for Testing */}
+            {/* Role View Switcher */}
             <div className="hidden xl:flex items-center bg-[#F4F8FC] p-1 rounded-lg border border-slate-200 text-xs">
               <button
                 onClick={() => setRoleViewMode('teacher')}
@@ -1118,40 +899,26 @@ export default function App() {
           </div>
         </div>
 
-        {/* Cloud Connection & Demo Mode Transparency Bar */}
+        {/* Cloud Connection Status Bar */}
         <div
           className={`px-4 lg:px-6 py-1.5 text-xs flex flex-wrap items-center justify-between gap-2 border-t ${
-            isDemoMode
-              ? 'bg-orange-50 border-orange-200 text-orange-950'
-              : fbUser
+            fbUser
               ? 'bg-blue-50/70 border-blue-100 text-[#0D47A1]'
               : 'bg-slate-100 border-slate-200 text-slate-700'
           }`}
         >
           <div className="flex items-center gap-2 font-semibold">
             <Cloud className="w-3.5 h-3.5 shrink-0" />
-            {isDemoMode ? (
+            {fbUser ? (
               <span>
-                <strong>[CHẾ ĐỘ TRÌNH DIỄN - DỮ LIỆU DEMO]:</strong> Bạn đang xem và thao tác trên bộ dữ liệu mẫu trình diễn (Khối 10, 11, 12). Dữ liệu này tách biệt hoàn toàn với dữ liệu học sinh thật.
-              </span>
-            ) : fbUser ? (
-              <span>
-                <strong>[ĐÃ KẾT NỐI CLOUD FIRESTORE THỰC TẾ]:</strong> Mọi thao tác tạo lớp, học sinh, câu hỏi, đề thi và bài làm đều được lưu trữ trực tiếp trên cơ sở dữ liệu đám mây.
+                <strong>[ĐÃ KẾT NỐI CLOUD FIRESTORE]:</strong> Mọi thao tác quản lý lớp học, học sinh, ngân hàng câu hỏi, đề kiểm tra và kết quả học tập đều được lưu trữ trực tiếp trên cơ sở dữ liệu đám mây.
               </span>
             ) : (
               <span>
-                <strong>[TRẠNG THÁI CƠ SỞ DỮ LIỆU]:</strong> Bạn đang ở chế độ Dữ liệu thật nhưng chưa đăng nhập tài khoản Google. Hãy nhấn <strong>&quot;Đăng nhập Google&quot;</strong> để lưu dữ liệu vào Cloud Firestore hoặc bật <strong>&quot;DỮ LIỆU DEMO&quot;</strong> để xem dữ liệu mẫu.
+                <strong>[TRẠNG THÁI CƠ SỞ DỮ LIỆU]:</strong> Vui lòng nhấn <strong>&quot;Đăng nhập Google&quot;</strong> ở góc phải phía trên để kết nối và lưu trữ dữ liệu trực tiếp trên Cloud Firestore.
               </span>
             )}
           </div>
-          {!fbUser && !isDemoMode && (
-            <button
-              onClick={() => setIsDemoMode(true)}
-              className="font-bold text-[#FF8A00] underline cursor-pointer shrink-0"
-            >
-              Xem ngay bộ dữ liệu mẫu [DỮ LIỆU DEMO] →
-            </button>
-          )}
         </div>
       </header>
 
@@ -1257,10 +1024,7 @@ export default function App() {
               submissions={activeSubmissions}
               resources={activeResources}
               auditLogs={activeLogs}
-              isDemoMode={isDemoMode}
-              isConnectedToFirestore={Boolean(fbUser)}
               onNavigate={setActiveTab}
-              onSeedDemoToFirestore={handleSeedDemoToFirestore}
             />
           )}
 

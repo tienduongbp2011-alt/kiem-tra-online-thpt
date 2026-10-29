@@ -44,7 +44,7 @@ import {
   Submission,
 } from '../types';
 import { DashboardHeroIllustration } from './BrandIllustrations';
-import { exportToCsv } from '../data/demoSeedData';
+import { exportToExcel } from '../utils/officeDocumentUtils';
 
 interface OverviewDashboardProps {
   classes: ClassRoom[];
@@ -55,10 +55,7 @@ interface OverviewDashboardProps {
   submissions: Submission[];
   resources: LearningResource[];
   auditLogs: AuditLogItem[];
-  isDemoMode: boolean;
-  isConnectedToFirestore: boolean;
   onNavigate: (tab: MenuTabId) => void;
-  onSeedDemoToFirestore: () => void;
 }
 
 export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
@@ -69,11 +66,7 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
   assignments,
   submissions,
   resources,
-  auditLogs,
-  isDemoMode,
-  isConnectedToFirestore,
   onNavigate,
-  onSeedDemoToFirestore,
 }) => {
   // Real metrics calculation (never fabricated)
   const totalStudents = students.length;
@@ -171,21 +164,21 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
     }));
 
   const handleQuickExportSummary = () => {
-    exportToCsv(
-      'Bao_Cao_Tong_Quan_Tin_Hoc_THPT_Thanh_Hoa.csv',
-      ['Chỉ tiêu thống kê', 'Giá trị thực tế', 'Chế độ dữ liệu'],
+    exportToExcel(
+      'Bao_Cao_Tong_Quan_Tin_Hoc_THPT_Thanh_Hoa.xlsx',
+      'TongQuanHeThong',
+      ['Chỉ tiêu thống kê', 'Giá trị thực tế'],
       [
-        ['Tổng số lớp học', totalClasses, isDemoMode ? 'DỮ LIỆU DEMO' : 'DỮ LIỆU THẬT'],
-        ['Tổng số học sinh', totalStudents, isDemoMode ? 'DỮ LIỆU DEMO' : 'DỮ LIỆU THẬT'],
-        ['Tổng số câu hỏi ngân hàng', totalQuestions, isDemoMode ? 'DỮ LIỆU DEMO' : 'DỮ LIỆU THẬT'],
-        ['Tổng số đề kiểm tra', totalExams, isDemoMode ? 'DỮ LIỆU DEMO' : 'DỮ LIỆU THẬT'],
-        ['Số đợt giao bài kiểm tra', totalAssignments, isDemoMode ? 'DỮ LIỆU DEMO' : 'DỮ LIỆU THẬT'],
-        ['Số bài làm đã nộp', totalSubmitted, isDemoMode ? 'DỮ LIỆU DEMO' : 'DỮ LIỆU THẬT'],
-        ['Tỷ lệ hoàn thành (%)', `${completionRate}%`, isDemoMode ? 'DỮ LIỆU DEMO' : 'DỮ LIỆU THẬT'],
+        ['Tổng số lớp học', totalClasses],
+        ['Tổng số học sinh', totalStudents],
+        ['Tổng số câu hỏi ngân hàng', totalQuestions],
+        ['Tổng số đề kiểm tra', totalExams],
+        ['Số đợt giao bài kiểm tra', totalAssignments],
+        ['Số bài làm đã nộp', totalSubmitted],
+        ['Tỷ lệ hoàn thành (%)', `${completionRate}%`],
         [
           'Điểm trung bình các bài đã chấm',
           avgScore !== null ? avgScore : 'Chưa có bài đã chấm',
-          isDemoMode ? 'DỮ LIỆU DEMO' : 'DỮ LIỆU THẬT',
         ],
       ]
     );
@@ -203,12 +196,6 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
               <span>XÃ THIỆN HƯNG - TP. ĐỒNG NAI</span>
               <span aria-hidden="true">·</span>
               <span>BỘ MÔN TIN HỌC THPT</span>
-              {isDemoMode && (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span className="text-[#FF8A00] underline">ĐANG HIỂN THỊ DỮ LIỆU DEMO</span>
-                </>
-              )}
             </div>
             <h2 className="text-2xl md:text-3xl font-bold leading-tight">
               Chào mừng Thầy Nguyễn Tiến Dương đến với Hệ thống Quản lý Dạy học và Kiểm tra Trực tuyến
@@ -232,14 +219,6 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
                 <PlayCircle className="w-4 h-4 text-[#168BFA]" />
                 <span>Mở Giao diện Học sinh Làm bài</span>
               </button>
-              {isConnectedToFirestore && totalClasses === 0 && !isDemoMode && (
-                <button
-                  onClick={onSeedDemoToFirestore}
-                  className="px-4 py-2 bg-[#00C8FF]/20 hover:bg-[#00C8FF]/30 border border-[#00C8FF] text-white font-semibold rounded-lg text-sm transition-colors cursor-pointer"
-                >
-                  Khởi tạo dữ liệu mẫu [DEMO] vào Firestore
-                </button>
-              )}
             </div>
           </div>
           <div className="lg:col-span-5">
@@ -408,7 +387,7 @@ export const OverviewDashboard: React.FC<OverviewDashboardProps> = ({
               className="px-3 py-2 bg-[#FF8A00] hover:bg-[#e67c00] text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>Xuất báo cáo CSV</span>
+              <span>Xuất báo cáo Excel (.xlsx)</span>
             </button>
           </div>
         </div>
