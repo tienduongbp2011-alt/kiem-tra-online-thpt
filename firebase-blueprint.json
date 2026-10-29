@@ -1,0 +1,361 @@
+{
+  "entities": {
+    "Admin": {
+      "title": "Admin",
+      "description": "Administrator record granting system-level access",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "maxLength": 200 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "createdAt"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile for teachers, administrators, and students",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "role": { "type": "string", "enum": ["admin", "teacher", "student"] },
+        "studentCode": { "type": "string", "maxLength": 50 },
+        "classId": { "type": "string", "maxLength": 128 },
+        "grade": { "type": "string", "enum": ["10", "11", "12", "ALL"] },
+        "status": { "type": "string", "enum": ["active", "inactive"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "role", "status", "createdAt", "updatedAt"]
+    },
+    "ClassRoom": {
+      "title": "ClassRoom",
+      "description": "High school class in Grade 10, 11, or 12",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "grade": { "type": "string", "enum": ["10", "11", "12"] },
+        "academicYear": { "type": "string", "minLength": 4, "maxLength": 30 },
+        "homeroomTeacher": { "type": "string", "maxLength": 120 },
+        "studentCount": { "type": "number" },
+        "description": { "type": "string", "maxLength": 500 },
+        "isDemo": { "type": "boolean" },
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "name", "grade", "academicYear", "studentCount", "isDemo", "ownerId", "createdAt", "updatedAt"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Student record managed by the teacher",
+      "type": "object",
+      "properties": {
+        "studentCode": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "fullName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "birthDate": { "type": "string", "maxLength": 20 },
+        "classId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "className": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "grade": { "type": "string", "enum": ["10", "11", "12"] },
+        "accountStatus": { "type": "string", "enum": ["active", "suspended"] },
+        "loginCode": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "studentUid": { "type": "string", "maxLength": 128 },
+        "avgScore": { "type": "number" },
+        "completedExamsCount": { "type": "number" },
+        "weakTopics": { "type": "string", "maxLength": 500 },
+        "isDemo": { "type": "boolean" },
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["studentCode", "fullName", "classId", "className", "grade", "accountStatus", "loginCode", "avgScore", "completedExamsCount", "isDemo", "ownerId", "createdAt", "updatedAt"]
+    },
+    "Question": {
+      "title": "Question",
+      "description": "Informatics question in the question bank",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 1, "maxLength": 50 },
+        "grade": { "type": "string", "enum": ["10", "11", "12"] },
+        "textbook": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "topic": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "lesson": { "type": "string", "maxLength": 200 },
+        "knowledgeUnit": { "type": "string", "maxLength": 200 },
+        "cognitiveLevel": { "type": "string", "enum": ["Nhận biết", "Thông hiểu", "Vận dụng", "Vận dụng cao"] },
+        "questionType": { "type": "string", "enum": ["multiple_choice", "true_false", "short_answer", "essay"] },
+        "content": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "codeSnippet": { "type": "string", "maxLength": 4000 },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "options": { "type": "array" },
+        "subItems": { "type": "array" },
+        "correctAnswer": { "type": "string", "maxLength": 1000 },
+        "explanation": { "type": "string", "maxLength": 3000 },
+        "gradingGuide": { "type": "string", "maxLength": 3000 },
+        "points": { "type": "number" },
+        "tags": { "type": "array" },
+        "isApproved": { "type": "boolean" },
+        "isDemo": { "type": "boolean" },
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "grade", "textbook", "topic", "cognitiveLevel", "questionType", "content", "points", "isApproved", "isDemo", "ownerId", "createdAt", "updatedAt"]
+    },
+    "Exam": {
+      "title": "Exam",
+      "description": "Exam structure and sanitized question list without secret answers",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 1, "maxLength": 50 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "category": { "type": "string", "enum": ["Kiểm tra thường xuyên", "Kiểm tra giữa kỳ", "Kiểm tra cuối kỳ", "Đề ôn tập", "Đề luyện thi"] },
+        "grade": { "type": "string", "enum": ["10", "11", "12"] },
+        "topic": { "type": "string", "maxLength": 200 },
+        "durationMinutes": { "type": "number" },
+        "totalPoints": { "type": "number" },
+        "status": { "type": "string", "enum": ["draft", "published", "open", "closed"] },
+        "matrixRows": { "type": "array" },
+        "questionsSanitized": { "type": "array" },
+        "questionCount": { "type": "number" },
+        "isDemo": { "type": "boolean" },
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["code", "title", "category", "grade", "durationMinutes", "totalPoints", "status", "questionCount", "isDemo", "ownerId", "createdAt", "updatedAt"]
+    },
+    "ExamAnswerKey": {
+      "title": "ExamAnswerKey",
+      "description": "Confidential answer key and grading guide for an exam, restricted to teachers",
+      "type": "object",
+      "properties": {
+        "examId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "answersMap": { "type": "object" },
+        "explanationsMap": { "type": "object" },
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["examId", "answersMap", "ownerId", "createdAt", "updatedAt"]
+    },
+    "Assignment": {
+      "title": "Assignment",
+      "description": "Exam assigned to a specific class with schedule and attempt rules",
+      "type": "object",
+      "properties": {
+        "examId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "examTitle": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "examCategory": { "type": "string", "maxLength": 80 },
+        "classId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "className": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "grade": { "type": "string", "enum": ["10", "11", "12"] },
+        "startTime": { "type": "string", "maxLength": 40 },
+        "dueTime": { "type": "string", "maxLength": 40 },
+        "durationMinutes": { "type": "number" },
+        "maxAttempts": { "type": "number" },
+        "resultReleaseMode": { "type": "string", "enum": ["immediate", "after_due", "manual"] },
+        "showAnswersAfterSubmit": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["open", "closed"] },
+        "questionsSnapshot": { "type": "array" },
+        "isDemo": { "type": "boolean" },
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["examId", "examTitle", "classId", "className", "grade", "startTime", "dueTime", "durationMinutes", "maxAttempts", "resultReleaseMode", "showAnswersAfterSubmit", "status", "isDemo", "ownerId", "createdAt", "updatedAt"]
+    },
+    "Submission": {
+      "title": "Submission",
+      "description": "Student exam submission and grading record",
+      "type": "object",
+      "properties": {
+        "assignmentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "examId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "examTitle": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "studentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "studentCode": { "type": "string", "minLength": 1, "maxLength": 50 },
+        "studentName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "studentUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "classId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "className": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "grade": { "type": "string", "enum": ["10", "11", "12"] },
+        "attemptNumber": { "type": "number" },
+        "startedAt": { "type": "string", "maxLength": 40 },
+        "submittedAt": { "type": "string", "maxLength": 40 },
+        "status": { "type": "string", "enum": ["Chưa bắt đầu", "Đang làm bài", "Đã nộp", "Chờ chấm", "Đã chấm", "Quá hạn"] },
+        "gradingStatus": { "type": "string", "enum": ["pending", "auto_graded", "waiting_essay", "graded"] },
+        "answersMap": { "type": "object" },
+        "objectiveScore": { "type": "number" },
+        "essayScore": { "type": "number" },
+        "totalScore": { "type": "number" },
+        "teacherFeedback": { "type": "string", "maxLength": 2000 },
+        "gradeHistory": { "type": "array" },
+        "isDemo": { "type": "boolean" },
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["assignmentId", "examId", "examTitle", "studentId", "studentCode", "studentName", "studentUid", "classId", "className", "grade", "attemptNumber", "startedAt", "status", "gradingStatus", "answersMap", "objectiveScore", "essayScore", "totalScore", "isDemo", "ownerId", "createdAt", "updatedAt"]
+    },
+    "LearningPlan": {
+      "title": "LearningPlan",
+      "description": "Systematic review and practice plan by grade and topic",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "grade": { "type": "string", "enum": ["10", "11", "12"] },
+        "topic": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "lesson": { "type": "string", "maxLength": 200 },
+        "objective": { "type": "string", "maxLength": 1000 },
+        "mode": { "type": "string", "enum": ["Luyện tập", "Kiểm tra"] },
+        "classId": { "type": "string", "maxLength": 128 },
+        "className": { "type": "string", "maxLength": 100 },
+        "dueDate": { "type": "string", "maxLength": 40 },
+        "questionIds": { "type": "array" },
+        "completedCount": { "type": "number" },
+        "totalStudents": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "completed", "draft"] },
+        "isDemo": { "type": "boolean" },
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "grade", "topic", "mode", "completedCount", "totalStudents", "status", "isDemo", "ownerId", "createdAt", "updatedAt"]
+    },
+    "LearningResource": {
+      "title": "LearningResource",
+      "description": "Educational document, slide, PDF, practice guide, or external link",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "category": { "type": "string", "enum": ["Bài giảng", "Tệp PDF", "Tài liệu thực hành", "Bài tập", "Liên kết tài nguyên", "Hướng dẫn sử dụng"] },
+        "grade": { "type": "string", "enum": ["10", "11", "12", "ALL"] },
+        "topic": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "resourceType": { "type": "string", "enum": ["link", "document", "guide"] },
+        "externalUrl": { "type": "string", "maxLength": 500 },
+        "fileStatus": { "type": "string", "maxLength": 200 },
+        "accessLevel": { "type": "string", "enum": ["public_students", "teacher_only"] },
+        "isDemo": { "type": "boolean" },
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "category", "grade", "resourceType", "accessLevel", "isDemo", "ownerId", "createdAt", "updatedAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Notification item for teachers and students",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "targetRole": { "type": "string", "enum": ["all", "teacher", "student"] },
+        "targetClassId": { "type": "string", "maxLength": 128 },
+        "isRead": { "type": "boolean" },
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "message", "targetRole", "isRead", "ownerId", "createdAt", "updatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Audit log of important system and grading actions",
+      "type": "object",
+      "properties": {
+        "action": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "module": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "actorName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "actorUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "targetId": { "type": "string", "maxLength": 128 },
+        "details": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["action", "module", "actorName", "actorUid", "createdAt"]
+    },
+    "SystemSetting": {
+      "title": "SystemSetting",
+      "description": "Global system configuration for Tin học THPT Thanh Hòa",
+      "type": "object",
+      "properties": {
+        "websiteName": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "schoolName": { "type": "string", "minLength": 1, "maxLength": 150 },
+        "address": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "teacherName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "subjectName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "academicYear": { "type": "string", "minLength": 4, "maxLength": 40 },
+        "gradingScale": { "type": "number" },
+        "defaultDurationMinutes": { "type": "number" },
+        "defaultReleaseMode": { "type": "string", "enum": ["immediate", "after_due", "manual"] },
+        "language": { "type": "string", "maxLength": 40 },
+        "timezone": { "type": "string", "maxLength": 60 },
+        "dateFormat": { "type": "string", "maxLength": 30 },
+        "fontFamily": { "type": "string", "maxLength": 60 },
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["websiteName", "schoolName", "address", "teacherName", "subjectName", "academicYear", "gradingScale", "defaultDurationMinutes", "defaultReleaseMode", "ownerId", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/Admin" },
+      "description": "System administrators"
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Authenticated user profiles"
+    },
+    "/classes/{classId}": {
+      "schema": { "$ref": "#/entities/ClassRoom" },
+      "description": "High school classes across grades 10, 11, and 12"
+    },
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Student roster and academic performance summary"
+    },
+    "/question_bank/{questionId}": {
+      "schema": { "$ref": "#/entities/Question" },
+      "description": "Teacher-restricted Informatics question bank"
+    },
+    "/exams/{examId}": {
+      "schema": { "$ref": "#/entities/Exam" },
+      "description": "Exams with matrix and sanitized questions"
+    },
+    "/exam_answer_keys/{examId}": {
+      "schema": { "$ref": "#/entities/ExamAnswerKey" },
+      "description": "Confidential exam answer keys restricted to teachers"
+    },
+    "/assignments/{assignmentId}": {
+      "schema": { "$ref": "#/entities/Assignment" },
+      "description": "Exam assignments distributed to classes"
+    },
+    "/submissions/{submissionId}": {
+      "schema": { "$ref": "#/entities/Submission" },
+      "description": "Student exam submissions and grades"
+    },
+    "/learning_plans/{planId}": {
+      "schema": { "$ref": "#/entities/LearningPlan" },
+      "description": "Review and study plans by grade and topic"
+    },
+    "/learning_resources/{resourceId}": {
+      "schema": { "$ref": "#/entities/LearningResource" },
+      "description": "Digital learning materials and documents"
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "System and class notifications"
+    },
+    "/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Immutable audit log of system and score updates"
+    },
+    "/system_settings/{settingId}": {
+      "schema": { "$ref": "#/entities/SystemSetting" },
+      "description": "Global school and website configuration"
+    }
+  }
+}
