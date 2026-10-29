@@ -292,7 +292,7 @@ export default function App() {
   ) => {
     if (!ensureSupabaseReady()) return;
     const now = new Date().toISOString();
-    const id = editId || `class_${Date.now()}`;
+    const id = editId || `class_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const existing = cloudClasses.find((c) => c.id === editId);
     const record: ClassRoom = {
       ...clsData,
@@ -336,7 +336,7 @@ export default function App() {
   ) => {
     if (!ensureSupabaseReady()) return;
     const now = new Date().toISOString();
-    const id = editId || `hs_${Date.now()}`;
+    const id = editId || `hs_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const existing = cloudStudents.find((s) => s.id === editId);
     const record: Student = {
       ...stData,

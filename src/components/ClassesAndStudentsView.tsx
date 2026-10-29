@@ -122,24 +122,81 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
     message: string;
   } | null>(null);
 
-  // Filtered classes
+  // Filtered classes (null-safe)
   const filteredClasses = classes.filter((c) => {
-    const matchGrade = gradeFilter === 'ALL' || c.grade === gradeFilter;
+    const matchGrade = gradeFilter === 'ALL' || String(c.grade || '10') === gradeFilter;
+    const q = searchQuery.toLowerCase();
     const matchQuery =
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.code.toLowerCase().includes(searchQuery.toLowerCase());
+      String(c.name || '').toLowerCase().includes(q) ||
+      String(c.code || '').toLowerCase().includes(q);
     return matchGrade && matchQuery;
   });
 
-  // Filtered students
+  // Filtered students (null-safe)
   const filteredStudents = students.filter((st) => {
-    const matchGrade = gradeFilter === 'ALL' || st.grade === gradeFilter;
-    const matchClass = classFilter === 'ALL' || st.classId === classFilter;
+    const matchGrade = gradeFilter === 'ALL' || String(st.grade || '10') === gradeFilter;
+    const matchClass =
+      classFilter === 'ALL' ||
+      st.classId === classFilter ||
+      st.className === classFilter;
+    const q = searchQuery.toLowerCase();
     const matchQuery =
-      st.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      st.studentCode.toLowerCase().includes(searchQuery.toLowerCase());
+      String(st.fullName || '').toLowerCase().includes(q) ||
+      String(st.studentCode || '').toLowerCase().includes(q) ||
+      String(st.className || '').toLowerCase().includes(q);
     return matchGrade && matchClass && matchQuery;
   });
+
+  const handleQuickCreateStandardClasses = async () => {
+    const standardClasses: Array<{ code: string; name: string; grade: GradeLevel; desc: string }> = [
+      {
+        code: '10A1',
+        name: 'Lớp 10A1 - Tin học 10',
+        grade: '10',
+        desc: 'Chương trình GDPT 2018 - Kết nối tri thức (Python cơ bản & Thiết kế đồ họa)',
+      },
+      {
+        code: '10A2',
+        name: 'Lớp 10A2 - Tin học 10',
+        grade: '10',
+        desc: 'Chương trình GDPT 2018 - Tin học ứng dụng Khối 10',
+      },
+      {
+        code: '11A1',
+        name: 'Lớp 11A1 - Tin học 11',
+        grade: '11',
+        desc: 'Cơ sở dữ liệu quan hệ, SQL & Lập trình thuật toán nâng cao',
+      },
+      {
+        code: '12A1',
+        name: 'Lớp 12A1 - Tin học 12',
+        grade: '12',
+        desc: 'Trí tuệ nhân tạo (AI), Mạng máy tính, HTML/CSS & Ôn thi Tốt nghiệp THPT',
+      },
+    ];
+
+    for (const item of standardClasses) {
+      const exists = classes.some(
+        (c) => String(c.code || '').toLowerCase() === item.code.toLowerCase()
+      );
+      if (!exists) {
+        await onSaveClass({
+          code: item.code,
+          name: item.name,
+          grade: item.grade,
+          academicYear: '2026 - 2027',
+          homeroomTeacher: 'Nguyễn Tiến Dương',
+          studentCount: 0,
+          description: item.desc,
+          isDemo: false,
+        });
+      }
+    }
+    setStatusBanner({
+      type: 'success',
+      message: 'Đã khởi tạo danh sách 4 lớp chuẩn (10A1, 10A2, 11A1, 12A1) lên Supabase.',
+    });
+  };
 
   const openAddClass = () => {
     setEditingClass(null);
@@ -158,13 +215,13 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
   const openEditClass = (cls: ClassRoom) => {
     setEditingClass(cls);
     setClassForm({
-      code: cls.code,
-      name: cls.name,
-      grade: cls.grade,
-      academicYear: cls.academicYear,
-      homeroomTeacher: cls.homeroomTeacher || '',
+      code: cls.code || '',
+      name: cls.name || '',
+      grade: cls.grade || '10',
+      academicYear: cls.academicYear || '2026 - 2027',
+      homeroomTeacher: cls.homeroomTeacher || 'Nguyễn Tiến Dương',
       description: cls.description || '',
-      isDemo: cls.isDemo,
+      isDemo: Boolean(cls.isDemo),
     });
     setShowClassModal(true);
   };
@@ -204,7 +261,7 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
       studentCode: `HS${Date.now().toString().slice(-4)}`,
       fullName: '',
       birthDate: '',
-      classId: classes[0]?.id || '',
+      classId: classes[0]?.id || '10A1',
       accountStatus: 'active',
       loginCode: `hs${Date.now().toString().slice(-4)}`,
       weakTopics: '',
@@ -216,44 +273,49 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
   const openEditStudent = (st: Student) => {
     setEditingStudent(st);
     setStudentForm({
-      studentCode: st.studentCode,
-      fullName: st.fullName,
+      studentCode: st.studentCode || '',
+      fullName: st.fullName || '',
       birthDate: st.birthDate || '',
-      classId: st.classId,
-      accountStatus: st.accountStatus,
-      loginCode: st.loginCode,
+      classId: st.classId || classes[0]?.id || '10A1',
+      accountStatus: st.accountStatus || 'active',
+      loginCode: st.loginCode || '',
       weakTopics: st.weakTopics || '',
-      isDemo: st.isDemo,
+      isDemo: Boolean(st.isDemo),
     });
     setShowStudentModal(true);
   };
 
   const handleStudentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!studentForm.studentCode.trim() || !studentForm.fullName.trim() || !studentForm.classId) {
+    if (!studentForm.studentCode.trim() || !studentForm.fullName.trim()) {
       setStatusBanner({
         type: 'error',
-        message: 'Vui lòng nhập đầy đủ Mã học sinh, Họ và tên và chọn Lớp học.',
+        message: 'Vui lòng nhập đầy đủ Mã học sinh và Họ và tên.',
       });
       return;
     }
-    const targetClass = classes.find((c) => c.id === studentForm.classId);
-    if (!targetClass) {
-      setStatusBanner({ type: 'error', message: 'Lớp học đã chọn không hợp lệ.' });
-      return;
-    }
+    const targetClass = classes.find(
+      (c) => c.id === studentForm.classId || c.code === studentForm.classId
+    );
+    const fallbackCode = studentForm.classId || '10A1';
+    const fallbackGrade: GradeLevel = fallbackCode.startsWith('12')
+      ? '12'
+      : fallbackCode.startsWith('11')
+      ? '11'
+      : '10';
+
     await onSaveStudent(
       {
         studentCode: studentForm.studentCode.trim(),
         fullName: studentForm.fullName.trim(),
         birthDate: studentForm.birthDate.trim(),
-        classId: targetClass.id,
-        className: targetClass.name,
-        grade: targetClass.grade,
+        classId: targetClass?.id || `class_${fallbackCode}`,
+        className: targetClass?.name || `Lớp ${fallbackCode}`,
+        grade: targetClass?.grade || fallbackGrade,
         accountStatus: studentForm.accountStatus,
         loginCode: studentForm.loginCode.trim() || studentForm.studentCode.trim().toLowerCase(),
-        avgScore: editingStudent?.avgScore || 0,
-        completedExamsCount: editingStudent?.completedExamsCount || 0,
+        avgScore: Number(editingStudent?.avgScore || 0),
+        completedExamsCount: Number(editingStudent?.completedExamsCount || 0),
         weakTopics: studentForm.weakTopics.trim(),
         isDemo: studentForm.isDemo,
       },
@@ -281,7 +343,9 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
     }
     const startIdx = lines[0].toLowerCase().includes('mahocsinh') ? 1 : 0;
     const results: CsvValidationRow[] = [];
-    const seenCodes = new Set<string>(students.map((s) => s.studentCode.toLowerCase()));
+    const seenCodes = new Set<string>(
+      students.map((s) => String(s.studentCode || '').toLowerCase()).filter(Boolean)
+    );
 
     for (let i = startIdx; i < lines.length; i++) {
       const cols = lines[i].split(',').map((c) => c.trim());
@@ -576,14 +640,41 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
       {subTab === 'students' ? (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           {filteredStudents.length === 0 ? (
-            <div className="p-10 text-center">
+            <div className="p-10 text-center space-y-3">
               <Users className="w-10 h-10 text-slate-400 mx-auto mb-2" />
               <p className="text-base font-bold text-[#17365D]">
-                Chưa có học sinh nào phù hợp với bộ lọc
+                {students.length === 0
+                  ? 'Hiện chưa có học sinh nào trong cơ sở dữ liệu Supabase'
+                  : 'Chưa có học sinh nào phù hợp với bộ lọc'}
               </p>
-              <p className="text-xs text-slate-500 mt-1">
-                Giáo viên có thể nhấn &quot;Thêm học sinh&quot; hoặc &quot;Nhập từ tệp Excel (.xlsx)&quot; để tạo danh sách học sinh.
+              <p className="text-xs text-slate-500 max-w-xl mx-auto">
+                Giáo viên có thể nhấn <strong>&quot;+ Thêm học sinh&quot;</strong>,{' '}
+                <strong>&quot;Nhập từ tệp Excel (.xlsx)&quot;</strong> hoặc khởi tạo nhanh các lớp học chuẩn bên dưới.
               </p>
+              {isTeacherOrAdmin && (
+                <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    onClick={openAddStudent}
+                    className="px-4 py-2 bg-[#0D47A1] hover:bg-[#168BFA] text-white rounded-lg text-xs font-bold cursor-pointer"
+                  >
+                    + Thêm học sinh mới
+                  </button>
+                  <button
+                    onClick={() => setShowCsvModal(true)}
+                    className="px-4 py-2 bg-[#168BFA] hover:bg-[#0D47A1] text-white rounded-lg text-xs font-bold cursor-pointer"
+                  >
+                    Nhập danh sách từ Excel (.xlsx)
+                  </button>
+                  {classes.length === 0 && (
+                    <button
+                      onClick={handleQuickCreateStandardClasses}
+                      className="px-4 py-2 bg-[#FF8A00] hover:bg-[#e67c00] text-white rounded-lg text-xs font-bold cursor-pointer"
+                    >
+                      Khởi tạo nhanh 4 lớp chuẩn (10A1, 10A2, 11A1, 12A1)
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -610,11 +701,11 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
                     const realAvg =
                       gradedSubs.length > 0
                         ? Math.round(
-                            (gradedSubs.reduce((acc, s) => acc + s.totalScore, 0) /
+                            (gradedSubs.reduce((acc, s) => acc + Number(s.totalScore || 0), 0) /
                               gradedSubs.length) *
                               100
                           ) / 100
-                        : st.avgScore;
+                        : Number(st.avgScore || 0);
 
                     return (
                       <tr key={st.id} className="hover:bg-[#F4F8FC] transition-colors">
@@ -632,10 +723,10 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
                         </td>
                         <td className="py-3 px-4 text-slate-600 tabular-nums">{st.loginCode}</td>
                         <td className="py-3 px-4 text-right tabular-nums font-semibold">
-                          {stSubs.length || st.completedExamsCount}
+                          {stSubs.length || Number(st.completedExamsCount || 0)}
                         </td>
                         <td className="py-3 px-4 text-right tabular-nums font-bold text-[#0D47A1]">
-                          {realAvg.toFixed(2)}
+                          {Number(realAvg || 0).toFixed(2)}
                         </td>
                         <td className="py-3 px-4">
                           <span
@@ -695,16 +786,34 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredClasses.length === 0 ? (
-            <div className="col-span-full bg-white rounded-xl p-10 text-center border border-slate-200">
+            <div className="col-span-full bg-white rounded-xl p-10 text-center border border-slate-200 space-y-3">
               <School className="w-10 h-10 text-slate-400 mx-auto mb-2" />
-              <p className="text-base font-bold text-[#17365D]">Chưa có lớp học nào</p>
+              <p className="text-base font-bold text-[#17365D]">Chưa có lớp học nào trên Supabase</p>
               <p className="text-xs text-slate-500 mt-1">
-                Nhấn &quot;Thêm lớp học mới&quot; để khởi tạo lớp học Khối 10, 11 hoặc 12.
+                Nhấn &quot;Thêm lớp học mới&quot; hoặc khởi tạo nhanh bộ lớp học Khối 10, 11, 12 của trường.
               </p>
+              {isTeacherOrAdmin && (
+                <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    onClick={openAddClass}
+                    className="px-4 py-2 bg-[#0D47A1] hover:bg-[#168BFA] text-white rounded-lg text-xs font-bold cursor-pointer"
+                  >
+                    + Thêm lớp học mới
+                  </button>
+                  <button
+                    onClick={handleQuickCreateStandardClasses}
+                    className="px-4 py-2 bg-[#FF8A00] hover:bg-[#e67c00] text-white rounded-lg text-xs font-bold cursor-pointer"
+                  >
+                    Khởi tạo nhanh 4 lớp chuẩn (10A1, 10A2, 11A1, 12A1)
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             filteredClasses.map((cls) => {
-              const actualStudents = students.filter((s) => s.classId === cls.id);
+              const actualStudents = students.filter(
+                (s) => s.classId === cls.id || s.className === cls.name
+              );
               return (
                 <div
                   key={cls.id}
@@ -728,7 +837,7 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
                   </div>
                   <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
                     <span className="text-sm font-bold text-[#17365D] tabular-nums">
-                      Sĩ số: {actualStudents.length || cls.studentCount} học sinh
+                      Sĩ số: {actualStudents.length || Number(cls.studentCount || 0)} học sinh
                     </span>
                     <div className="flex items-center gap-2">
                       <button
@@ -946,12 +1055,20 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
                     onChange={(e) => setStudentForm({ ...studentForm, classId: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
                   >
-                    <option value="">-- Chọn lớp --</option>
-                    {classes.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} (Khối {c.grade})
-                      </option>
-                    ))}
+                    {classes.length > 0 ? (
+                      classes.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} (Khối {c.grade})
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="10A1">Lớp 10A1 (Khối 10)</option>
+                        <option value="10A2">Lớp 10A2 (Khối 10)</option>
+                        <option value="11A1">Lớp 11A1 (Khối 11)</option>
+                        <option value="12A1">Lớp 12A1 (Khối 12)</option>
+                      </>
+                    )}
                   </select>
                 </div>
                 <div>
@@ -1177,9 +1294,11 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
               const avg =
                 graded.length > 0
                   ? Math.round(
-                      (graded.reduce((acc, s) => acc + s.totalScore, 0) / graded.length) * 100
+                      (graded.reduce((acc, s) => acc + (Number(s.totalScore) || 0), 0) /
+                        graded.length) *
+                        100
                     ) / 100
-                  : profileStudent.avgScore;
+                  : Number(profileStudent.avgScore || 0);
 
               return (
                 <div className="space-y-4">
@@ -1187,13 +1306,13 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
                     <div className="p-3.5 rounded-lg bg-[#F4F8FC] border border-slate-200">
                       <p className="text-xs text-slate-500">Số bài kiểm tra đã tham gia</p>
                       <p className="text-xl font-bold text-[#0D47A1] tabular-nums mt-1">
-                        {stSubs.length || profileStudent.completedExamsCount} bài
+                        {stSubs.length || profileStudent.completedExamsCount || 0} bài
                       </p>
                     </div>
                     <div className="p-3.5 rounded-lg bg-[#F4F8FC] border border-slate-200">
                       <p className="text-xs text-slate-500">Điểm trung bình tích lũy</p>
                       <p className="text-xl font-bold text-[#FF8A00] tabular-nums mt-1">
-                        {avg.toFixed(2)} / 10
+                        {Number(avg || 0).toFixed(2)} / 10
                       </p>
                     </div>
                     <div className="p-3.5 rounded-lg bg-[#F4F8FC] border border-slate-200">
@@ -1214,7 +1333,7 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
                           <LineChart
                             data={graded.map((g, i) => ({
                               lan: `Lần ${i + 1}`,
-                              diem: g.totalScore,
+                              diem: Number(g.totalScore || 0),
                             }))}
                           >
                             <CartesianGrid strokeDasharray="3 3" />
@@ -1259,7 +1378,9 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
                             <tr key={s.id}>
                               <td className="p-2.5 font-bold">{s.examTitle}</td>
                               <td className="p-2.5 tabular-nums">
-                                {(s.submittedAt || s.startedAt).slice(0, 16).replace('T', ' ')}
+                                {String(s.submittedAt || s.startedAt || '')
+                                  .slice(0, 16)
+                                  .replace('T', ' ')}
                               </td>
                               <td className="p-2.5 font-bold">{s.status}</td>
                               <td className="p-2.5 text-right tabular-nums">{s.objectiveScore}</td>

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { GradeLevel } from './types';
 
 export const SUPABASE_PROJECT_URL =
   import.meta.env.VITE_DATABASE_URL ||
@@ -33,17 +34,28 @@ export function cleanJsonPayload<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj));
 }
 
+function normalizeGrade(raw: unknown): GradeLevel {
+  const str = String(raw ?? '').replace(/[^0-9]/g, '');
+  if (str === '11') return '11';
+  if (str === '12') return '12';
+  return '10';
+}
+
 /**
- * Normalizes a database row from Supabase whether it uses the `data` JSONB column
- * or pre-existing relational snake_case/camelCase columns.
+ * Normalizes a database row from Supabase for a specific table so that
+ * no property is ever undefined/null when rendered by React components,
+ * whether the row came from `data` JSONB or pre-existing relational columns.
  */
-function normalizeRow<T>(row: Record<string, unknown>): T {
+function normalizeRowForTable<T>(
+  tableName: SupabaseTableName,
+  row: Record<string, unknown>
+): T {
   const nestedData =
     row.data && typeof row.data === 'object' && !Array.isArray(row.data)
       ? (row.data as Record<string, unknown>)
       : {};
 
-  const merged: Record<string, unknown> = {
+  const m: Record<string, unknown> = {
     ...row,
     ...nestedData,
   };
@@ -124,16 +136,191 @@ function normalizeRow<T>(row: Record<string, unknown>): T {
   };
 
   for (const [snake, camel] of Object.entries(snakeToCamelMap)) {
-    if (merged[camel] === undefined && merged[snake] !== undefined) {
-      merged[camel] = merged[snake];
+    if (m[camel] === undefined && m[snake] !== undefined) {
+      m[camel] = m[snake];
     }
   }
 
-  if (merged.id !== undefined) {
-    merged.id = String(merged.id);
+  const nowIso = new Date().toISOString();
+  const safeId = String(m.id ?? m.examId ?? `id_${Date.now()}`);
+
+  if (tableName === 'classes') {
+    const code = String(m.code ?? m.class_code ?? m.ma_lop ?? m.name ?? safeId);
+    const name = String(m.name ?? m.class_name ?? m.ten_lop ?? `Lớp ${code}`);
+    return {
+      ...m,
+      id: safeId,
+      code,
+      name,
+      grade: normalizeGrade(m.grade ?? m.khoi ?? code),
+      academicYear: String(m.academicYear ?? m.academic_year ?? m.nam_hoc ?? '2026 - 2027'),
+      homeroomTeacher: String(
+        m.homeroomTeacher ?? m.homeroom_teacher ?? m.teacher_name ?? 'Nguyễn Tiến Dương'
+      ),
+      studentCount: Number(m.studentCount ?? m.student_count ?? m.si_so ?? 0) || 0,
+      description: String(m.description ?? m.mo_ta ?? ''),
+      isDemo: Boolean(m.isDemo ?? false),
+      ownerId: String(m.ownerId ?? 'teacher_nguyen_tien_duong'),
+      createdAt: String(m.createdAt ?? nowIso),
+      updatedAt: String(m.updatedAt ?? nowIso),
+    } as unknown as T;
   }
 
-  return merged as unknown as T;
+  if (tableName === 'students') {
+    const studentCode = String(
+      m.studentCode ?? m.student_code ?? m.code ?? m.ma_hs ?? m.username ?? safeId
+    );
+    const fullName = String(
+      m.fullName ?? m.full_name ?? m.name ?? m.ho_ten ?? m.student_name ?? 'Học sinh'
+    );
+    const className = String(
+      m.className ?? m.class_name ?? m.lop ?? m.class ?? 'Lớp 10A1'
+    );
+    return {
+      ...m,
+      id: safeId,
+      studentCode,
+      fullName,
+      birthDate: String(m.birthDate ?? m.birth_date ?? m.dob ?? m.ngay_sinh ?? ''),
+      classId: String(m.classId ?? m.class_id ?? m.lop_id ?? ''),
+      className,
+      grade: normalizeGrade(m.grade ?? m.khoi ?? className),
+      accountStatus:
+        m.accountStatus === 'suspended' || m.status === 'inactive' ? 'suspended' : 'active',
+      loginCode: String(m.loginCode ?? m.login_code ?? m.username ?? studentCode.toLowerCase()),
+      studentUid: String(m.studentUid ?? safeId),
+      avgScore: Number(m.avgScore ?? m.avg_score ?? m.diem_tb ?? 0) || 0,
+      completedExamsCount: Number(m.completedExamsCount ?? 0) || 0,
+      weakTopics: String(m.weakTopics ?? ''),
+      isDemo: Boolean(m.isDemo ?? false),
+      ownerId: String(m.ownerId ?? 'teacher_nguyen_tien_duong'),
+      createdAt: String(m.createdAt ?? nowIso),
+      updatedAt: String(m.updatedAt ?? nowIso),
+    } as unknown as T;
+  }
+
+  if (tableName === 'question_bank') {
+    return {
+      ...m,
+      id: safeId,
+      code: String(m.code ?? safeId),
+      grade: normalizeGrade(m.grade),
+      textbook: String(m.textbook ?? 'Kết nối tri thức với cuộc sống'),
+      topic: String(m.topic ?? 'Chủ đề chung'),
+      lesson: String(m.lesson ?? ''),
+      knowledgeUnit: String(m.knowledgeUnit ?? ''),
+      cognitiveLevel: (['Nhận biết', 'Thông hiểu', 'Vận dụng', 'Vận dụng cao'].includes(
+        String(m.cognitiveLevel)
+      )
+        ? m.cognitiveLevel
+        : 'Nhận biết') as string,
+      questionType: (['multiple_choice', 'true_false', 'short_answer', 'essay'].includes(
+        String(m.questionType)
+      )
+        ? m.questionType
+        : 'multiple_choice') as string,
+      content: String(m.content ?? m.question ?? ''),
+      codeSnippet: String(m.codeSnippet ?? ''),
+      options: Array.isArray(m.options) ? m.options.map(String) : [],
+      subItems: Array.isArray(m.subItems) ? m.subItems : [],
+      correctAnswer: String(m.correctAnswer ?? 'A'),
+      explanation: String(m.explanation ?? ''),
+      gradingGuide: String(m.gradingGuide ?? ''),
+      points: Number(m.points ?? 0.25) || 0.25,
+      tags: Array.isArray(m.tags) ? m.tags.map(String) : [],
+      isApproved: m.isApproved !== undefined ? Boolean(m.isApproved) : true,
+      isDemo: Boolean(m.isDemo ?? false),
+      ownerId: String(m.ownerId ?? 'teacher_nguyen_tien_duong'),
+      createdAt: String(m.createdAt ?? nowIso),
+      updatedAt: String(m.updatedAt ?? nowIso),
+    } as unknown as T;
+  }
+
+  if (tableName === 'exams') {
+    const questionsSanitized = Array.isArray(m.questionsSanitized) ? m.questionsSanitized : [];
+    return {
+      ...m,
+      id: safeId,
+      code: String(m.code ?? safeId),
+      title: String(m.title ?? m.name ?? 'Đề kiểm tra Tin học'),
+      category: String(m.category ?? 'Kiểm tra thường xuyên'),
+      grade: normalizeGrade(m.grade),
+      topic: String(m.topic ?? 'Tổng hợp'),
+      durationMinutes: Number(m.durationMinutes ?? 45) || 45,
+      totalPoints: Number(m.totalPoints ?? 10) || 10,
+      status: String(m.status ?? 'open'),
+      matrixRows: Array.isArray(m.matrixRows) ? m.matrixRows : [],
+      questionsSanitized,
+      questionCount: Number(m.questionCount ?? questionsSanitized.length) || 0,
+      isDemo: Boolean(m.isDemo ?? false),
+      ownerId: String(m.ownerId ?? 'teacher_nguyen_tien_duong'),
+      createdAt: String(m.createdAt ?? nowIso),
+      updatedAt: String(m.updatedAt ?? nowIso),
+    } as unknown as T;
+  }
+
+  if (tableName === 'assignments') {
+    return {
+      ...m,
+      id: safeId,
+      examId: String(m.examId ?? ''),
+      examTitle: String(m.examTitle ?? m.title ?? 'Bài kiểm tra Tin học'),
+      examCategory: String(m.examCategory ?? 'Kiểm tra thường xuyên'),
+      classId: String(m.classId ?? ''),
+      className: String(m.className ?? 'Lớp học'),
+      grade: normalizeGrade(m.grade),
+      startTime: String(m.startTime ?? nowIso.slice(0, 16)),
+      dueTime: String(m.dueTime ?? nowIso.slice(0, 16)),
+      durationMinutes: Number(m.durationMinutes ?? 45) || 45,
+      maxAttempts: Number(m.maxAttempts ?? 1) || 1,
+      resultReleaseMode: String(m.resultReleaseMode ?? 'immediate'),
+      showAnswersAfterSubmit: Boolean(m.showAnswersAfterSubmit ?? true),
+      status: m.status === 'closed' ? 'closed' : 'open',
+      questionsSnapshot: Array.isArray(m.questionsSnapshot) ? m.questionsSnapshot : [],
+      isDemo: Boolean(m.isDemo ?? false),
+      ownerId: String(m.ownerId ?? 'teacher_nguyen_tien_duong'),
+      createdAt: String(m.createdAt ?? nowIso),
+      updatedAt: String(m.updatedAt ?? nowIso),
+    } as unknown as T;
+  }
+
+  if (tableName === 'submissions') {
+    return {
+      ...m,
+      id: safeId,
+      assignmentId: String(m.assignmentId ?? ''),
+      examId: String(m.examId ?? ''),
+      examTitle: String(m.examTitle ?? 'Bài kiểm tra'),
+      studentId: String(m.studentId ?? ''),
+      studentCode: String(m.studentCode ?? 'HS'),
+      studentName: String(m.studentName ?? 'Học sinh'),
+      studentUid: String(m.studentUid ?? ''),
+      classId: String(m.classId ?? ''),
+      className: String(m.className ?? 'Lớp'),
+      grade: normalizeGrade(m.grade),
+      attemptNumber: Number(m.attemptNumber ?? 1) || 1,
+      startedAt: String(m.startedAt ?? nowIso),
+      submittedAt: String(m.submittedAt ?? nowIso),
+      status: String(m.status ?? 'Đã chấm'),
+      gradingStatus: String(m.gradingStatus ?? 'graded'),
+      answersMap:
+        m.answersMap && typeof m.answersMap === 'object' ? m.answersMap : {},
+      objectiveScore: Number(m.objectiveScore ?? 0) || 0,
+      essayScore: Number(m.essayScore ?? 0) || 0,
+      totalScore: Number(m.totalScore ?? 0) || 0,
+      teacherFeedback: String(m.teacherFeedback ?? ''),
+      gradeHistory: Array.isArray(m.gradeHistory) ? m.gradeHistory : [],
+      isDemo: Boolean(m.isDemo ?? false),
+      ownerId: String(m.ownerId ?? 'teacher_nguyen_tien_duong'),
+      createdAt: String(m.createdAt ?? nowIso),
+      updatedAt: String(m.updatedAt ?? nowIso),
+    } as unknown as T;
+  }
+
+  m.id = safeId;
+  m.createdAt = String(m.createdAt ?? nowIso);
+  m.updatedAt = String(m.updatedAt ?? nowIso);
+  return m as unknown as T;
 }
 
 export async function checkSupabaseStatus(): Promise<{
@@ -177,13 +364,11 @@ export async function checkSupabaseStatus(): Promise<{
 }
 
 export async function supabaseFetchAll<T>(tableName: SupabaseTableName): Promise<T[]> {
-  // Always select('*') without assuming specific column names so pre-existing tables never fail
   const { data, error } = await supabase.from(tableName).select('*');
 
   if (error) {
     const msg = error.message || '';
     const code = error.code || '';
-    // If an individual table does not exist yet, return empty array instead of crashing the whole app
     if (
       code === '42P01' ||
       code === 'PGRST205' ||
@@ -196,8 +381,9 @@ export async function supabaseFetchAll<T>(tableName: SupabaseTableName): Promise
     throw new Error(`[Supabase ${tableName}] ${error.message}`);
   }
 
-  const list = (data || []).map((row) => normalizeRow<T>(row as Record<string, unknown>));
-  return list;
+  return (data || []).map((row) =>
+    normalizeRowForTable<T>(tableName, row as Record<string, unknown>)
+  );
 }
 
 export async function supabaseUpsertDoc(
@@ -217,11 +403,12 @@ export async function supabaseUpsertDoc(
 
   if (error) {
     if (
-      error.message.includes('column') &&
-      (error.message.includes('data') || error.message.includes('updated_at'))
+      error.message.includes('column') ||
+      error.message.includes('uuid') ||
+      error.message.includes('not-null')
     ) {
       throw new Error(
-        `Bảng "${tableName}" trên Supabase là bảng cũ chưa có cột lưu trữ "data". Vui lòng nhấn nút "Cập nhật Bảng SQL Supabase" trên thanh tiêu đề, sao chép đoạn SQL và nhấn RUN trong Supabase SQL Editor.`
+        `Bảng "${tableName}" trên Supabase đang dùng cấu trúc cột cũ (${error.message}). Vui lòng nhấn nút "Supabase: Đã sẵn sàng" (hoặc "Khởi tạo Bảng SQL Supabase") trên thanh tiêu đề, sao chép đoạn lệnh SQL chuẩn hóa bảng và nhấn RUN trong Supabase SQL Editor.`
       );
     }
     throw new Error(`[Supabase lưu ${tableName}/${docId}] ${error.message}`);
@@ -239,14 +426,13 @@ export async function supabaseDeleteDoc(
 }
 
 export const SUPABASE_SETUP_SQL = `-- ============================================================================
--- KỊCH BẢN KHỞI TẠO & CẬP NHẬT CƠ SỞ DỮ LIỆU SUPABASE (POSTGRESQL)
+-- KỊCH BẢN KHỞI TẠO & CHUẨN HÓA CƠ SỞ DỮ LIỆU SUPABASE (POSTGRESQL)
 -- HỆ THỐNG QUẢN LÝ DẠY HỌC VÀ KIỂM TRA TRỰC TUYẾN - TIN HỌC THPT THANH HÒA
 -- Giáo viên phụ trách: Nguyễn Tiến Dương
 -- Hướng dẫn: Dán toàn bộ nội dung này vào mục SQL Editor trên Supabase và nhấn RUN
--- (Hỗ trợ cả trường hợp bảng đã tồn tại từ trước và tự động bổ sung cột data JSONB)
 -- ============================================================================
 
--- 1. Tạo bảng nếu chưa có
+-- 1. Tạo bảng mới nếu chưa tồn tại
 CREATE TABLE IF NOT EXISTS public.classes (
   id TEXT PRIMARY KEY,
   data JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -313,7 +499,7 @@ CREATE TABLE IF NOT EXISTS public.system_settings (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 2. Tự động bổ sung cột "data" và "updated_at" nếu các bảng đã tồn tại từ trước
+-- 2. Bổ sung cột data JSONB và updated_at nếu bảng đã tồn tại từ trước
 ALTER TABLE public.classes ADD COLUMN IF NOT EXISTS data JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE public.classes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
 
