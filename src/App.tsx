@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   LayoutDashboard,
   Users,
@@ -137,8 +137,10 @@ export default function App() {
   const [preselectedQuestionsForExam, setPreselectedQuestionsForExam] = useState<Question[]>([]);
   const [activeStudentIdForPortal, setActiveStudentIdForPortal] = useState<string>('');
   const [appAlert, setAppAlert] = useState<{ type: 'info' | 'error'; text: string } | null>(null);
+  const isMutatingRef = useRef<boolean>(false);
 
   const loadAllDataFromSupabase = useCallback(async () => {
+    if (isMutatingRef.current) return;
     setSbChecking(true);
     const status = await checkSupabaseStatus();
     setSbConnected(status.connected);
@@ -171,17 +173,42 @@ export default function App() {
         supabaseFetchAll<SystemSetting>('system_settings'),
       ]);
 
+      // Tự động lọc và dọn dẹp các bài giao kiểm tra trực tuyến (assignments) của những đề thi đã bị xóa
+      const validExamIds = new Set(examsList.map((e) => e.id));
+      const validExamTitles = new Set(examsList.map((e) => (e.title || '').trim().toLowerCase()));
+      const validAssignments: Assignment[] = [];
+      const orphanedAssignments: Assignment[] = [];
+
+      for (const asg of assignmentsList) {
+        const hasValidExam =
+          validExamIds.has(asg.examId) ||
+          (asg.examTitle && validExamTitles.has(asg.examTitle.trim().toLowerCase()));
+        if (hasValidExam) {
+          validAssignments.push(asg);
+        } else {
+          orphanedAssignments.push(asg);
+        }
+      }
+
+      if (orphanedAssignments.length > 0) {
+        void Promise.all(
+          orphanedAssignments.map((orphan) => supabaseDeleteDoc('assignments', orphan.id))
+        );
+      }
+
       setCloudClasses(classesList);
       setCloudStudents(studentsList);
       setCloudQuestions(questionsList);
       setCloudExams(examsList);
       setCloudAnswerKeys(
-        keysList.map((k) => ({
-          ...k,
-          examId: k.examId || (k as unknown as { id: string }).id,
-        }))
+        keysList
+          .map((k) => ({
+            ...k,
+            examId: k.examId || (k as unknown as { id: string }).id,
+          }))
+          .filter((k) => validExamIds.has(k.examId))
       );
-      setCloudAssignments(assignmentsList);
+      setCloudAssignments(validAssignments);
       setCloudSubmissions(submissionsList);
       setCloudPlans(plansList);
       setCloudResources(resourcesList);
@@ -217,7 +244,9 @@ export default function App() {
     const channel = supabase
       .channel('tinhoc_thpt_thanhhoa_changes')
       .on('postgres_changes', { event: '*', schema: 'public' }, () => {
-        loadAllDataFromSupabase();
+        if (!isMutatingRef.current) {
+          loadAllDataFromSupabase();
+        }
       })
       .subscribe();
 
@@ -231,7 +260,14 @@ export default function App() {
   const activeQuestions = cloudQuestions;
   const activeExams = cloudExams;
   const activeAnswerKeys = cloudAnswerKeys;
-  const activeAssignments = cloudAssignments;
+  // Chỉ hiển thị đề thi trực tuyến nếu đề kiểm tra gốc vẫn còn tồn tại trong Phân hệ Đề kiểm tra
+  const activeAssignments = cloudAssignments.filter((a) =>
+    cloudExams.some(
+      (e) =>
+        e.id === a.examId ||
+        (e.title && a.examTitle && e.title.trim().toLowerCase() === a.examTitle.trim().toLowerCase())
+    )
+  );
   const activeSubmissions = cloudSubmissions;
   const activePlans = cloudPlans;
   const activeResources = cloudResources;
@@ -370,15 +406,19 @@ export default function App() {
     validStudents: Omit<Student, 'id' | 'createdAt' | 'updatedAt' | 'ownerId'>[]
   ) => {
     if (!ensureSupabaseReady()) return;
+    isMutatingRef.current = true;
     try {
-      // Xóa toàn bộ danh sách học sinh cũ trước khi thêm danh sách mới từ Excel
+      // 1. Xóa toàn bộ danh sách học sinh cũ trên cả giao diện, bộ nhớ đệm và Supabase
+      setCloudStudents([]);
       await supabaseDeleteAll('students');
 
+      // 2. Thêm danh sách học sinh mới từ tệp Excel
+      const batchTimestamp = Date.now();
       const inserted: Student[] = [];
       for (let i = 0; i < validStudents.length; i++) {
         const st = validStudents[i];
-        const now = new Date().toISOString();
-        const id = `hs_${Date.now()}_${i}`;
+        const now = new Date(batchTimestamp + i).toISOString();
+        const id = `hs_${batchTimestamp}_${i}`;
         const record: Student = {
           ...st,
           id,
@@ -390,17 +430,22 @@ export default function App() {
         await supabaseUpsertDoc('students', id, record as unknown as Record<string, unknown>);
         inserted.push(record);
       }
+
       setCloudStudents(inserted);
+      setActiveStudentIdForPortal(inserted[0]?.id || '');
+
       await recordAudit(
-        'Xóa danh sách cũ & Nhập danh sách học sinh mới từ Excel',
+        'Xóa danh sách học sinh cũ & Nhập danh sách mới từ Excel',
         'Học sinh',
-        `Số lượng mới: ${validStudents.length} học sinh`
+        `Đã thay thế hoàn toàn bằng ${validStudents.length} học sinh mới`
       );
     } catch (err) {
       setAppAlert({
         type: 'error',
         text: err instanceof Error ? err.message : String(err),
       });
+    } finally {
+      isMutatingRef.current = false;
     }
   };
 
@@ -501,17 +546,57 @@ export default function App() {
 
   const handleDeleteExam = async (examId: string) => {
     if (!ensureSupabaseReady()) return;
+    isMutatingRef.current = true;
     try {
+      const targetExam = cloudExams.find((e) => e.id === examId);
+      const targetTitleLower = (targetExam?.title || '').trim().toLowerCase();
+
+      // Tìm tất cả các bài kiểm tra trực tuyến (assignments) liên kết với đề kiểm tra này
+      const linkedAssignments = cloudAssignments.filter(
+        (a) =>
+          a.examId === examId ||
+          (targetTitleLower && (a.examTitle || '').trim().toLowerCase() === targetTitleLower)
+      );
+
+      // Xóa đề kiểm tra, đáp án và toàn bộ bài giao kiểm tra trực tuyến liên quan
       await supabaseDeleteDoc('exams', examId);
       await supabaseDeleteDoc('exam_answer_keys', examId);
+      for (const asg of linkedAssignments) {
+        await supabaseDeleteDoc('assignments', asg.id);
+        // Xóa bản nháp đang làm (nếu có) trong trình duyệt
+        try {
+          Object.keys(localStorage).forEach((k) => {
+            if (k.startsWith(`thpt_thanh_hoa_draft_${asg.id}_`)) {
+              localStorage.removeItem(k);
+            }
+          });
+        } catch {
+          // ignore
+        }
+      }
+
       setCloudExams((prev) => prev.filter((e) => e.id !== examId));
       setCloudAnswerKeys((prev) => prev.filter((k) => k.examId !== examId));
-      await recordAudit('Xóa đề kiểm tra', 'Đề kiểm tra', examId);
+      setCloudAssignments((prev) =>
+        prev.filter(
+          (a) =>
+            a.examId !== examId &&
+            !(targetTitleLower && (a.examTitle || '').trim().toLowerCase() === targetTitleLower)
+        )
+      );
+
+      await recordAudit(
+        'Xóa đề kiểm tra & gỡ đề khỏi cổng Kiểm tra trực tuyến',
+        'Đề kiểm tra',
+        `${targetExam?.title || examId} (Đã xóa ${linkedAssignments.length} lượt giao bài trực tuyến)`
+      );
     } catch (err) {
       setAppAlert({
         type: 'error',
         text: err instanceof Error ? err.message : String(err),
       });
+    } finally {
+      isMutatingRef.current = false;
     }
   };
 

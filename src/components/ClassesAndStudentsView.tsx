@@ -357,9 +357,14 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
       if (studentCode && seenCodes.has(studentCode.toLowerCase())) {
         errors.push(`Trùng Mã HS trong tệp (${studentCode})`);
       }
-      if (!['10', '11', '12'].includes(gradeRaw)) {
-        errors.push(`Khối "${gradeRaw}" không hợp lệ (chỉ nhận 10, 11, 12)`);
-      }
+
+      const normalizedGradeDigits = (gradeRaw || classCode).replace(/[^0-9]/g, '');
+      const inferredGrade: GradeLevel = normalizedGradeDigits.startsWith('12')
+        ? '12'
+        : normalizedGradeDigits.startsWith('11')
+        ? '11'
+        : '10';
+
       if (!classCode) {
         errors.push('Thiếu Mã lớp');
       }
@@ -372,7 +377,7 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
         fullName,
         birthDate,
         classCode,
-        grade: (['10', '11', '12'].includes(gradeRaw) ? gradeRaw : '10') as GradeLevel,
+        grade: inferredGrade,
         loginCode: loginCode || studentCode.toLowerCase(),
         isValid: errors.length === 0,
         errorMsg: errors.join('; '),
@@ -427,12 +432,15 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
             String(c.code || '').toLowerCase() === r.classCode.toLowerCase() ||
             String(c.name || '').toLowerCase().includes(r.classCode.toLowerCase())
         );
+        const cleanClsName = r.classCode.toLowerCase().startsWith('lớp')
+          ? r.classCode
+          : `Lớp ${r.classCode}`;
         return {
           studentCode: r.studentCode,
           fullName: r.fullName,
           birthDate: r.birthDate,
           classId: matchedClass?.id || `class_${r.classCode}`,
-          className: matchedClass?.name || `Lớp ${r.classCode}`,
+          className: matchedClass?.name || cleanClsName,
           grade: matchedClass?.grade || r.grade,
           accountStatus: 'active',
           loginCode: r.loginCode,
@@ -445,12 +453,15 @@ export const ClassesAndStudentsView: React.FC<ClassesAndStudentsViewProps> = ({
     );
 
     await onBatchImportStudents(toImport);
+    setGradeFilter('ALL');
+    setClassFilter('ALL');
+    setSearchQuery('');
     setShowCsvModal(false);
     setCsvRawText('');
     setCsvValidationResults([]);
     setStatusBanner({
       type: 'success',
-      message: `Đã xóa danh sách học sinh cũ và nhập thành công ${validRows.length} học sinh mới từ tệp Excel vào hệ thống.`,
+      message: `Đã xóa toàn bộ dữ liệu học sinh cũ và nhập thành công ${validRows.length} học sinh mới từ tệp Excel.`,
     });
   };
 

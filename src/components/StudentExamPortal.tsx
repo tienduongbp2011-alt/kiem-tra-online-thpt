@@ -103,6 +103,14 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
     }
   }, [activeStudentId]);
 
+  // Clear activeAssignment if its exam/assignment was deleted by the teacher
+  useEffect(() => {
+    if (activeAssignment && !assignments.some((a) => a.id === activeAssignment.id)) {
+      setActiveAssignment(null);
+      setActiveSubmissionId(undefined);
+    }
+  }, [activeAssignment, assignments]);
+
   // Restore any active draft session on mount or when student changes
   useEffect(() => {
     if (!currentStudent) return;

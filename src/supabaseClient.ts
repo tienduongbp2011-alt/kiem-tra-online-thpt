@@ -324,9 +324,41 @@ function normalizeRowForTable<T>(
 }
 
 const LOCAL_CACHE_PREFIX = 'thpt_thanh_hoa_sb_v2_';
+const LOCAL_META_PREFIX = 'thpt_thanh_hoa_sb_meta_v2_';
+
+interface TableSyncMeta {
+  deletedIds: string[];
+  clearedAtMs: number;
+}
 
 function getLocalCacheKey(tableName: SupabaseTableName): string {
   return `${LOCAL_CACHE_PREFIX}${tableName}`;
+}
+
+function getLocalMetaKey(tableName: SupabaseTableName): string {
+  return `${LOCAL_META_PREFIX}${tableName}`;
+}
+
+function readTableMeta(tableName: SupabaseTableName): TableSyncMeta {
+  try {
+    const raw = localStorage.getItem(getLocalMetaKey(tableName));
+    if (!raw) return { deletedIds: [], clearedAtMs: 0 };
+    const parsed = JSON.parse(raw);
+    return {
+      deletedIds: Array.isArray(parsed?.deletedIds) ? parsed.deletedIds.map(String) : [],
+      clearedAtMs: Number(parsed?.clearedAtMs || 0),
+    };
+  } catch {
+    return { deletedIds: [], clearedAtMs: 0 };
+  }
+}
+
+function writeTableMeta(tableName: SupabaseTableName, meta: TableSyncMeta): void {
+  try {
+    localStorage.setItem(getLocalMetaKey(tableName), JSON.stringify(meta));
+  } catch {
+    // Ignore storage quota errors
+  }
 }
 
 function readLocalTableMap(tableName: SupabaseTableName): Record<string, Record<string, unknown>> {
@@ -365,13 +397,15 @@ function isIgnorableSchemaError(error: { message?: string; code?: string } | nul
     code === '42703' ||
     code === '22P02' ||
     code === '23502' ||
+    code === '23503' ||
     msg.includes('does not exist') ||
     msg.includes('could not find the table') ||
     msg.includes(' could not find the ') ||
     msg.includes('schema cache') ||
     msg.includes('column') ||
     msg.includes('uuid') ||
-    msg.includes('not-null')
+    msg.includes('not-null') ||
+    msg.includes('foreign key')
   );
 }
 
@@ -417,6 +451,15 @@ export async function checkSupabaseStatus(): Promise<{
 
 export async function supabaseFetchAll<T>(tableName: SupabaseTableName): Promise<T[]> {
   const localMap = readLocalTableMap(tableName);
+  const meta = readTableMeta(tableName);
+  const deletedSet = new Set(meta.deletedIds);
+
+  // Filter localMap against tombstones first
+  for (const key of Object.keys(localMap)) {
+    if (deletedSet.has(key)) {
+      delete localMap[key];
+    }
+  }
   const localValues = Object.values(localMap);
 
   try {
@@ -429,17 +472,36 @@ export async function supabaseFetchAll<T>(tableName: SupabaseTableName): Promise
       throw new Error(`[Supabase ${tableName}] ${error.message}`);
     }
 
-    const remoteRows = (data || []).map((row) =>
-      normalizeRowForTable<T>(tableName, row as Record<string, unknown>)
-    );
+    const rawRemoteRows = (data || []) as Record<string, unknown>[];
+    const validRemoteRows: T[] = [];
 
-    if (remoteRows.length > 0) {
-      // Merge remote rows into local mirror
+    for (const rawRow of rawRemoteRows) {
+      const normalized = normalizeRowForTable<T>(tableName, rawRow);
+      const rec = normalized as unknown as Record<string, unknown>;
+      const id = String(rec.id || '');
+      if (!id || deletedSet.has(id)) {
+        continue;
+      }
+      // If table was explicitly cleared (e.g. Excel replace) and this remote row is older than clearedAtMs
+      // and not in our new localMap, skip it so stale remote rows never reappear
+      if (meta.clearedAtMs > 0 && !localMap[id]) {
+        const rowTimeStr = String(
+          rawRow.updated_at || rec.updatedAt || rec.createdAt || ''
+        );
+        const rowTimeMs = rowTimeStr ? new Date(rowTimeStr).getTime() : 0;
+        if (!rowTimeMs || rowTimeMs < meta.clearedAtMs) {
+          continue;
+        }
+      }
+      validRemoteRows.push(normalized);
+    }
+
+    if (validRemoteRows.length > 0) {
       const mergedMap: Record<string, Record<string, unknown>> = { ...localMap };
-      for (const r of remoteRows) {
+      for (const r of validRemoteRows) {
         const rec = r as unknown as Record<string, unknown>;
         const id = String(rec.id || '');
-        if (id) {
+        if (id && !deletedSet.has(id)) {
           mergedMap[id] = rec;
         }
       }
@@ -447,13 +509,12 @@ export async function supabaseFetchAll<T>(tableName: SupabaseTableName): Promise
       return Object.values(mergedMap).map((row) => normalizeRowForTable<T>(tableName, row));
     }
 
-    // If remote table is empty but we have local records cached before the SQL table was created,
-    // push local records to Supabase in the background and return them.
+    // If remote table has no valid rows, return localValues (and sync them in background if any)
     if (localValues.length > 0) {
       void (async () => {
         for (const item of localValues) {
           const docId = String(item.id || '');
-          if (docId) {
+          if (docId && !deletedSet.has(docId)) {
             await supabase
               .from(tableName)
               .upsert(
@@ -483,6 +544,13 @@ export async function supabaseUpsertDoc(
 ): Promise<void> {
   const cleaned = cleanJsonPayload(payload);
 
+  // Remove from deletedIds if re-inserting
+  const meta = readTableMeta(tableName);
+  if (meta.deletedIds.includes(docId)) {
+    meta.deletedIds = meta.deletedIds.filter((id) => id !== docId);
+    writeTableMeta(tableName, meta);
+  }
+
   // Always save to local mirror immediately so data is never lost
   const localMap = readLocalTableMap(tableName);
   localMap[docId] = { ...cleaned, id: docId };
@@ -506,6 +574,12 @@ export async function supabaseDeleteDoc(
   tableName: SupabaseTableName,
   docId: string
 ): Promise<void> {
+  const meta = readTableMeta(tableName);
+  if (!meta.deletedIds.includes(docId)) {
+    meta.deletedIds.push(docId);
+    writeTableMeta(tableName, meta);
+  }
+
   const localMap = readLocalTableMap(tableName);
   delete localMap[docId];
   writeLocalTableMap(tableName, localMap);
@@ -517,12 +591,42 @@ export async function supabaseDeleteDoc(
 }
 
 export async function supabaseDeleteAll(tableName: SupabaseTableName): Promise<void> {
-  // Clear local mirror immediately
-  writeLocalTableMap(tableName, {});
+  const existingLocal = readLocalTableMap(tableName);
+  const meta = readTableMeta(tableName);
+  const allDeletedIds = new Set<string>([...meta.deletedIds, ...Object.keys(existingLocal)]);
 
-  const { error } = await supabase.from(tableName).delete().neq('id', '');
-  if (error && !isIgnorableSchemaError(error)) {
-    throw new Error(`[Supabase xóa toàn bộ ${tableName}] ${error.message}`);
+  // Clear local mirror immediately and mark cleared timestamp
+  writeLocalTableMap(tableName, {});
+  writeTableMeta(tableName, {
+    deletedIds: Array.from(allDeletedIds),
+    clearedAtMs: Date.now(),
+  });
+
+  try {
+    // Fetch existing remote IDs so we can delete both by .in('id', ids) and .not('id', 'is', null)
+    // (works for both UUID and TEXT primary keys)
+    const { data: remoteRows } = await supabase.from(tableName).select('id');
+    const remoteIds = (remoteRows || [])
+      .map((r: Record<string, unknown>) => String(r.id || ''))
+      .filter(Boolean);
+
+    if (remoteIds.length > 0) {
+      remoteIds.forEach((id) => allDeletedIds.add(id));
+      writeTableMeta(tableName, {
+        deletedIds: Array.from(allDeletedIds),
+        clearedAtMs: Date.now(),
+      });
+      await supabase.from(tableName).delete().in('id', remoteIds);
+    }
+
+    const { error } = await supabase.from(tableName).delete().not('id', 'is', null);
+    if (error && !isIgnorableSchemaError(error)) {
+      throw new Error(`[Supabase xóa toàn bộ ${tableName}] ${error.message}`);
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('[Supabase')) {
+      throw err;
+    }
   }
 }
 
