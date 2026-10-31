@@ -66,6 +66,7 @@ import {
   SystemSettingsView,
 } from './components/OtherModulesView';
 import { LoginPortalGate } from './components/LoginPortalGate';
+import { PWAInstallButton } from './components/PWAInstallButton';
 
 interface NavMenuItem {
   id: MenuTabId;
@@ -960,8 +961,9 @@ export default function App() {
             </div>
           </div>
 
-          {/* Right: Supabase SQL Helper, Role Switch, Notifications & Teacher Profile */}
+          {/* Right: Mobile App / QR Button, Supabase SQL Helper, Role Switch, Notifications & Teacher Profile */}
           <div className="flex items-center gap-2 shrink-0">
+            <PWAInstallButton variant="header" />
             {roleViewMode === 'teacher' && (
               <>
                 <button

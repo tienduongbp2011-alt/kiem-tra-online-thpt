@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { ClassRoom, Student } from '../types';
 import { SchoolBookTechLogo, TeacherAvatarSvg } from './BrandIllustrations';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface LoginPortalGateProps {
   classes: ClassRoom[];
@@ -30,6 +31,16 @@ export const LoginPortalGate: React.FC<LoginPortalGateProps> = ({
   onStudentLoginSuccess,
   onTeacherLoginSuccess,
 }) => {
+  // Detect if opened via Student App link (?mode=student) or installed as standalone mobile PWA
+  const [studentOnlyAppMode, setStudentOnlyAppMode] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    const isStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as unknown as { standalone?: boolean }).standalone === true;
+    return params.get('mode') === 'student' || isStandalone;
+  });
+
   // Mobile active tab: default to 'student' so students on phones immediately see their login form
   const [mobileActiveWindow, setMobileActiveWindow] = useState<'student' | 'teacher'>('student');
 
@@ -187,13 +198,16 @@ export const LoginPortalGate: React.FC<LoginPortalGateProps> = ({
             </div>
           </div>
 
-          <div className="hidden md:flex items-center gap-2.5 bg-[#082F6E] px-4 py-2.5 rounded-xl border border-blue-700 text-xs shrink-0">
-            <School className="w-4 h-4 text-[#00C8FF]" />
-            <div>
-              <p className="font-bold text-white">Hệ thống Kiểm tra Trực tuyến</p>
-              <p className="text-blue-200 text-[11px]">
-                {students.length} học sinh · {classes.length} lớp học
-              </p>
+          <div className="flex items-center justify-between md:justify-end gap-2.5 w-full md:w-auto">
+            <PWAInstallButton variant="header" />
+            <div className="hidden md:flex items-center gap-2.5 bg-[#082F6E] px-4 py-2.5 rounded-xl border border-blue-700 text-xs shrink-0">
+              <School className="w-4 h-4 text-[#00C8FF]" />
+              <div>
+                <p className="font-bold text-white">Hệ thống Kiểm tra Trực tuyến</p>
+                <p className="text-blue-200 text-[11px]">
+                  {students.length} học sinh · {classes.length} lớp học
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -201,54 +215,66 @@ export const LoginPortalGate: React.FC<LoginPortalGateProps> = ({
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-8 flex flex-col justify-start lg:justify-center">
-        {/* Mobile Window Switcher Tabs (Visible on phones & tablets < lg) */}
-        <div className="lg:hidden mb-4">
-          <div className="grid grid-cols-2 gap-2 bg-white p-1.5 rounded-2xl border-2 border-slate-200 shadow-xs">
-            <button
-              type="button"
-              onClick={() => setMobileActiveWindow('student')}
-              className={`py-3 px-3 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer ${
-                mobileActiveWindow === 'student'
-                  ? 'bg-[#0D47A1] text-white shadow-xs'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <GraduationCap className="w-4 h-4 shrink-0" />
-              <span>Học sinh làm bài</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobileActiveWindow('teacher')}
-              className={`py-3 px-3 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer ${
-                mobileActiveWindow === 'teacher'
-                  ? 'bg-[#0D47A1] text-white shadow-xs'
-                  : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4 shrink-0" />
-              <span>Giáo viên quản trị</span>
-            </button>
-          </div>
+        <div className="mb-4">
+          <PWAInstallButton variant="banner" />
         </div>
 
-        <div className="hidden lg:block text-center max-w-3xl mx-auto mb-6 space-y-1">
-          <h2 className="text-xl sm:text-2xl font-bold text-[#0D47A1] uppercase">
-            Cổng Đăng Nhập Kiểm Tra Trực Tuyến & Quản Trị Dạy Học
-          </h2>
-          <p className="text-sm text-slate-600">
-            Học sinh chọn đúng tên trong danh sách và nhập mã đăng nhập ở{' '}
-            <strong className="text-[#0D47A1]">Cửa sổ Học sinh</strong> để vào làm bài thi.
-          </p>
-        </div>
+        {/* Mobile Window Switcher Tabs (Hidden when in dedicated Student App Mode) */}
+        {!studentOnlyAppMode && (
+          <div className="lg:hidden mb-4">
+            <div className="grid grid-cols-2 gap-2 bg-white p-1.5 rounded-2xl border-2 border-slate-200 shadow-xs">
+              <button
+                type="button"
+                onClick={() => setMobileActiveWindow('student')}
+                className={`py-3 px-3 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer ${
+                  mobileActiveWindow === 'student'
+                    ? 'bg-[#0D47A1] text-white shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <GraduationCap className="w-4 h-4 shrink-0" />
+                <span>Học sinh làm bài</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileActiveWindow('teacher')}
+                className={`py-3 px-3 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer ${
+                  mobileActiveWindow === 'teacher'
+                    ? 'bg-[#0D47A1] text-white shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <ShieldCheck className="w-4 h-4 shrink-0" />
+                <span>Giáo viên quản trị</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!studentOnlyAppMode && (
+          <div className="hidden lg:block text-center max-w-3xl mx-auto mb-6 space-y-1">
+            <h2 className="text-xl sm:text-2xl font-bold text-[#0D47A1] uppercase">
+              Cổng Đăng Nhập Kiểm Tra Trực Tuyến & Quản Trị Dạy Học
+            </h2>
+            <p className="text-sm text-slate-600">
+              Học sinh chọn đúng tên trong danh sách và nhập mã đăng nhập ở{' '}
+              <strong className="text-[#0D47A1]">Cửa sổ Học sinh</strong> để vào làm bài thi.
+            </p>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           {/* ===============================================================
-              WINDOW 1: STUDENT ONLINE EXAM LOGIN WINDOW (7 columns on lg)
+              WINDOW 1: STUDENT ONLINE EXAM LOGIN WINDOW
           =============================================================== */}
           <div
             className={`${
-              mobileActiveWindow === 'student' ? 'flex' : 'hidden lg:flex'
-            } lg:col-span-7 bg-white rounded-2xl border-2 border-[#168BFA] shadow-md overflow-hidden flex-col justify-between`}
+              studentOnlyAppMode
+                ? 'flex lg:col-span-8 lg:col-start-3'
+                : mobileActiveWindow === 'student'
+                ? 'flex lg:col-span-7'
+                : 'hidden lg:flex lg:col-span-7'
+            } bg-white rounded-2xl border-2 border-[#168BFA] shadow-md overflow-hidden flex-col justify-between`}
           >
             <div>
               {/* Window Title Bar */}
@@ -486,135 +512,163 @@ export const LoginPortalGate: React.FC<LoginPortalGateProps> = ({
           {/* ===============================================================
               WINDOW 2: TEACHER MAIN DASHBOARD LOGIN WINDOW (5 columns on lg)
           =============================================================== */}
-          <div
-            className={`${
-              mobileActiveWindow === 'teacher' ? 'flex' : 'hidden lg:flex'
-            } lg:col-span-5 bg-white rounded-2xl border-2 border-[#0D47A1] shadow-md overflow-hidden flex-col justify-between`}
-          >
-            <div>
-              {/* Window Title Bar */}
-              <div className="bg-[#0D47A1] text-white px-4 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 sm:p-2.5 rounded-xl bg-white/15 shrink-0">
-                    <ShieldCheck className="w-5 h-5 sm:w-6 sm:h-6 text-[#FF8A00]" />
-                  </div>
-                  <div>
-                    <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-[#00C8FF] block">
-                      Cửa sổ đăng nhập Giáo viên
-                    </span>
-                    <h3 className="text-base sm:text-lg font-bold text-white leading-tight">
-                      ĐĂNG NHẬP GIÁO VIÊN & TRANG CHÍNH
-                    </h3>
+          {!studentOnlyAppMode && (
+            <div
+              className={`${
+                mobileActiveWindow === 'teacher' ? 'flex' : 'hidden lg:flex'
+              } lg:col-span-5 bg-white rounded-2xl border-2 border-[#0D47A1] shadow-md overflow-hidden flex-col justify-between`}
+            >
+              <div>
+                {/* Window Title Bar */}
+                <div className="bg-[#0D47A1] text-white px-4 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 sm:p-2.5 rounded-xl bg-white/15 shrink-0">
+                      <ShieldCheck className="w-5 h-5 sm:w-6 sm:h-6 text-[#FF8A00]" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-[#00C8FF] block">
+                        Cửa sổ đăng nhập Giáo viên
+                      </span>
+                      <h3 className="text-base sm:text-lg font-bold text-white leading-tight">
+                        ĐĂNG NHẬP GIÁO VIÊN & TRANG CHÍNH
+                      </h3>
+                    </div>
                   </div>
                 </div>
+
+                <form onSubmit={handleTeacherSubmit} className="p-4 sm:p-6 space-y-4">
+                  {/* Teacher Profile Card */}
+                  <div className="p-3.5 sm:p-4 rounded-xl bg-[#F4F8FC] border border-blue-200 flex items-center gap-3.5">
+                    <TeacherAvatarSvg className="w-11 h-11 sm:w-12 sm:h-12 shrink-0" />
+                    <div className="text-xs space-y-0.5">
+                      <p className="text-sm font-bold text-[#0D47A1]">
+                        Giáo viên: Nguyễn Tiến Dương
+                      </p>
+                      <p className="text-slate-600 font-semibold">
+                        Trường THPT Thanh Hòa · Môn Tin học
+                      </p>
+                    </div>
+                  </div>
+
+                  {teacherError && (
+                    <div className="p-3.5 rounded-xl bg-red-50 border border-red-300 text-red-900 text-xs sm:text-sm font-bold flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                      <span>{teacherError}</span>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-bold text-[#0D47A1] mb-1.5">
+                      Tài khoản / Email Giáo viên (*):
+                    </label>
+                    <div className="relative">
+                      <UserCheck className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={teacherUsername}
+                        onChange={(e) => {
+                          setTeacherUsername(e.target.value);
+                          setTeacherError('');
+                        }}
+                        placeholder="Nhập Email hoặc tên tài khoản giáo viên..."
+                        className="w-full pl-10 pr-3.5 py-3 bg-white border-2 border-slate-300 focus:border-[#0D47A1] rounded-xl text-base font-bold text-[#17365D] focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-[#0D47A1] mb-1.5">
+                      Mật khẩu quản trị Giáo viên (*):
+                    </label>
+                    <div className="relative">
+                      <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type={showTeacherPass ? 'text' : 'password'}
+                        value={teacherPassword}
+                        onChange={(e) => {
+                          setTeacherPassword(e.target.value);
+                          setTeacherError('');
+                        }}
+                        placeholder="Nhập mật khẩu quản trị..."
+                        className="w-full pl-10 pr-10 py-3 bg-white border-2 border-slate-300 focus:border-[#0D47A1] rounded-xl text-base font-bold text-[#17365D] focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowTeacherPass(!showTeacherPass)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-[#0D47A1] cursor-pointer"
+                        title={showTeacherPass ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                      >
+                        {showTeacherPass ? (
+                          <EyeOff className="w-5 h-5" />
+                        ) : (
+                          <Eye className="w-5 h-5" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-blue-50/70 border border-blue-200 text-xs text-slate-700 space-y-1">
+                    <p className="font-bold text-[#0D47A1] flex items-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5" />
+                      <span>Chức năng Trang chính Quản trị Giáo viên:</span>
+                    </p>
+                    <ul className="list-disc list-inside text-[11px] space-y-0.5 text-slate-600">
+                      <li>Quản lý Lớp học & Nhập danh sách Học sinh từ Excel</li>
+                      <li>Ngân hàng câu hỏi chuẩn GDPT 2018 & Tạo đề theo Ma trận</li>
+                      <li>Giao bài kiểm tra trực tuyến, chấm điểm & xuất báo cáo</li>
+                    </ul>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-3.5 px-5 bg-[#0D47A1] hover:bg-[#168BFA] text-white rounded-xl text-base font-bold shadow-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <LogIn className="w-5 h-5 shrink-0" />
+                    <span>ĐĂNG NHẬP TRANG CHÍNH GIÁO VIÊN</span>
+                  </button>
+                </form>
               </div>
 
-              <form onSubmit={handleTeacherSubmit} className="p-4 sm:p-6 space-y-4">
-                {/* Teacher Profile Card */}
-                <div className="p-3.5 sm:p-4 rounded-xl bg-[#F4F8FC] border border-blue-200 flex items-center gap-3.5">
-                  <TeacherAvatarSvg className="w-11 h-11 sm:w-12 sm:h-12 shrink-0" />
-                  <div className="text-xs space-y-0.5">
-                    <p className="text-sm font-bold text-[#0D47A1]">
-                      Giáo viên: Nguyễn Tiến Dương
-                    </p>
-                    <p className="text-slate-600 font-semibold">
-                      Trường THPT Thanh Hòa · Môn Tin học
-                    </p>
-                  </div>
-                </div>
-
-                {teacherError && (
-                  <div className="p-3.5 rounded-xl bg-red-50 border border-red-300 text-red-900 text-xs sm:text-sm font-bold flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-                    <span>{teacherError}</span>
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-sm font-bold text-[#0D47A1] mb-1.5">
-                    Tài khoản / Email Giáo viên (*):
-                  </label>
-                  <div className="relative">
-                    <UserCheck className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      value={teacherUsername}
-                      onChange={(e) => {
-                        setTeacherUsername(e.target.value);
-                        setTeacherError('');
-                      }}
-                      placeholder="Nhập Email hoặc tên tài khoản giáo viên..."
-                      className="w-full pl-10 pr-3.5 py-3 bg-white border-2 border-slate-300 focus:border-[#0D47A1] rounded-xl text-base font-bold text-[#17365D] focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-[#0D47A1] mb-1.5">
-                    Mật khẩu quản trị Giáo viên (*):
-                  </label>
-                  <div className="relative">
-                    <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type={showTeacherPass ? 'text' : 'password'}
-                      value={teacherPassword}
-                      onChange={(e) => {
-                        setTeacherPassword(e.target.value);
-                        setTeacherError('');
-                      }}
-                      placeholder="Nhập mật khẩu quản trị..."
-                      className="w-full pl-10 pr-10 py-3 bg-white border-2 border-slate-300 focus:border-[#0D47A1] rounded-xl text-base font-bold text-[#17365D] focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowTeacherPass(!showTeacherPass)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-[#0D47A1] cursor-pointer"
-                      title={showTeacherPass ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-                    >
-                      {showTeacherPass ? (
-                        <EyeOff className="w-5 h-5" />
-                      ) : (
-                        <Eye className="w-5 h-5" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-blue-50/70 border border-blue-200 text-xs text-slate-700 space-y-1">
-                  <p className="font-bold text-[#0D47A1] flex items-center gap-1.5">
-                    <BookOpen className="w-3.5 h-3.5" />
-                    <span>Chức năng Trang chính Quản trị Giáo viên:</span>
-                  </p>
-                  <ul className="list-disc list-inside text-[11px] space-y-0.5 text-slate-600">
-                    <li>Quản lý Lớp học & Nhập danh sách Học sinh từ Excel</li>
-                    <li>Ngân hàng câu hỏi chuẩn GDPT 2018 & Tạo đề theo Ma trận</li>
-                    <li>Giao bài kiểm tra trực tuyến, chấm điểm & xuất báo cáo</li>
-                  </ul>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-3.5 px-5 bg-[#0D47A1] hover:bg-[#168BFA] text-white rounded-xl text-base font-bold shadow-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                >
-                  <LogIn className="w-5 h-5 shrink-0" />
-                  <span>ĐĂNG NHẬP TRANG CHÍNH GIÁO VIÊN</span>
-                </button>
-              </form>
+              <div className="bg-[#F4F8FC] px-4 sm:px-6 py-3 border-t border-slate-200 text-xs text-slate-600 flex items-center justify-between">
+                <span>Quyền Quản trị viên hệ thống</span>
+                <span className="font-bold text-emerald-700">● Đồng bộ trực tuyến</span>
+              </div>
             </div>
-
-            <div className="bg-[#F4F8FC] px-4 sm:px-6 py-3 border-t border-slate-200 text-xs text-slate-600 flex items-center justify-between">
-              <span>Quyền Quản trị viên hệ thống</span>
-              <span className="font-bold text-emerald-700">● Đồng bộ trực tuyến</span>
-            </div>
-          </div>
+          )}
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-slate-200 py-3 px-4 text-center text-xs text-slate-600">
-        <strong>TIN HỌC THPT THANH HÒA</strong> — Trường THPT Thanh Hòa, Xã Thiện Hưng, TP. Đồng Nai
-        · Giáo viên: <strong>Nguyễn Tiến Dương</strong>
+      <footer className="bg-white border-t border-slate-200 py-3 px-4 text-center text-xs text-slate-600 flex flex-col sm:flex-row items-center justify-center gap-2">
+        <span>
+          <strong>TIN HỌC THPT THANH HÒA</strong> — Trường THPT Thanh Hòa, Xã Thiện Hưng, TP. Đồng
+          Nai · Giáo viên: <strong>Nguyễn Tiến Dương</strong>
+        </span>
+        {studentOnlyAppMode ? (
+          <button
+            type="button"
+            onClick={() => {
+              setStudentOnlyAppMode(false);
+              setMobileActiveWindow('teacher');
+            }}
+            className="text-[11px] font-bold text-[#0D47A1] underline cursor-pointer"
+          >
+            Dành cho Giáo viên
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setStudentOnlyAppMode(true);
+              setMobileActiveWindow('student');
+            }}
+            className="text-[11px] font-bold text-[#168BFA] underline cursor-pointer"
+          >
+            Xem chế độ App Học sinh
+          </button>
+        )}
       </footer>
     </div>
   );
 };
+
