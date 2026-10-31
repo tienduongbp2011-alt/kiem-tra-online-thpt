@@ -14,6 +14,7 @@ import {
   LogOut,
   Search,
   GraduationCap,
+  Shuffle,
 } from 'lucide-react';
 import {
   Assignment,
@@ -22,7 +23,10 @@ import {
   Student,
   Submission,
 } from '../types';
-import { gradeObjectiveSubmission } from '../data/demoSeedData';
+import {
+  buildShuffledQuestionsForAttempt,
+  gradeObjectiveSubmission,
+} from '../data/demoSeedData';
 
 function extractClassCode(str: string): string {
   const m = String(str || '')
@@ -59,6 +63,7 @@ interface DraftSession {
   startedAt: string;
   expiresAtMs: number;
   answersMap: Record<string, string>;
+  shuffledQuestions?: SanitizedQuestion[];
 }
 
 export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
@@ -82,6 +87,7 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
   const [showStudentLoginModal, setShowStudentLoginModal] = useState<boolean>(!activeStudentId);
 
   const [activeAssignment, setActiveAssignment] = useState<Assignment | null>(null);
+  const [activeQuestions, setActiveQuestions] = useState<SanitizedQuestion[]>([]);
   const [activeSubmissionId, setActiveSubmissionId] = useState<string | undefined>(undefined);
   const [startedAtIso, setStartedAtIso] = useState<string>('');
   const [remainingSeconds, setRemainingSeconds] = useState<number>(0);
@@ -107,6 +113,7 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
   useEffect(() => {
     if (activeAssignment && !assignments.some((a) => a.id === activeAssignment.id)) {
       setActiveAssignment(null);
+      setActiveQuestions([]);
       setActiveSubmissionId(undefined);
     }
   }, [activeAssignment, assignments]);
@@ -123,7 +130,16 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
           const nowMs = Date.now();
           const leftSec = Math.floor((draft.expiresAtMs - nowMs) / 1000);
           if (leftSec > 0 && doesAssignmentMatchStudent(asg, currentStudent)) {
+            const restoredQuestions =
+              draft.shuffledQuestions && draft.shuffledQuestions.length > 0
+                ? draft.shuffledQuestions
+                : buildShuffledQuestionsForAttempt(
+                    asg.questionsSnapshot || [],
+                    asg.shuffleQuestions !== false,
+                    asg.shuffleAnswers !== false
+                  );
             setActiveAssignment(asg);
+            setActiveQuestions(restoredQuestions);
             setActiveSubmissionId(draft.submissionId);
             setStartedAtIso(draft.startedAt);
             setRemainingSeconds(leftSec);
@@ -147,7 +163,10 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
     async (isTimeoutAutoSubmit = false) => {
       if (!activeAssignment || !currentStudent) return;
 
-      const questions: SanitizedQuestion[] = activeAssignment.questionsSnapshot || [];
+      const questions: SanitizedQuestion[] =
+        activeQuestions.length > 0
+          ? activeQuestions
+          : activeAssignment.questionsSnapshot || [];
       const keyDoc = answerKeys.find((k) => k.examId === activeAssignment.examId);
       const secretKeyMap = keyDoc?.answersMap || {};
 
@@ -201,6 +220,7 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
 
       setShowSubmitConfirm(false);
       setActiveAssignment(null);
+      setActiveQuestions([]);
       setActiveSubmissionId(undefined);
       setPortalMessage({
         type: 'success',
@@ -213,6 +233,7 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
     },
     [
       activeAssignment,
+      activeQuestions,
       currentStudent,
       answerKeys,
       answersMap,
@@ -260,10 +281,19 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
       startedAt: startedAtIso,
       expiresAtMs,
       answersMap,
+      shuffledQuestions: activeQuestions.length > 0 ? activeQuestions : undefined,
     };
     localStorage.setItem(storageKey, JSON.stringify(draft));
     setLastAutoSaveTime(new Date().toLocaleTimeString('vi-VN'));
-  }, [answersMap, activeAssignment, currentStudent, activeSubmissionId, startedAtIso, remainingSeconds]);
+  }, [
+    answersMap,
+    activeAssignment,
+    activeQuestions,
+    currentStudent,
+    activeSubmissionId,
+    startedAtIso,
+    remainingSeconds,
+  ]);
 
   const handleStartExam = async (asg: Assignment) => {
     if (!currentStudent) return;
@@ -306,6 +336,15 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
     const nowIso = new Date().toISOString();
     const durationSec = (Number(asg.durationMinutes) || 45) * 60;
 
+    // Tự động đảo thứ tự câu hỏi và đảo thứ tự các đáp án cho lượt làm bài mới này
+    const shouldShuffleQ = asg.shuffleQuestions !== false;
+    const shouldShuffleA = asg.shuffleAnswers !== false;
+    const shuffledForAttempt = buildShuffledQuestionsForAttempt(
+      asg.questionsSnapshot || [],
+      shouldShuffleQ,
+      shouldShuffleA
+    );
+
     // Record 'Đang làm bài' in database
     const subId = await onSaveOrSubmitAttempt({
       assignmentId: asg.id,
@@ -337,11 +376,13 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
       startedAt: nowIso,
       expiresAtMs: Date.now() + durationSec * 1000,
       answersMap: {},
+      shuffledQuestions: shuffledForAttempt,
     };
     localStorage.setItem(storageKey, JSON.stringify(draft));
 
     setActiveSubmissionId(subId);
     setActiveAssignment(asg);
+    setActiveQuestions(shuffledForAttempt);
     setStartedAtIso(nowIso);
     setRemainingSeconds(durationSec);
     setCurrentQuestionIdx(0);
@@ -402,7 +443,10 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
 
   // If currently taking an exam
   if (activeAssignment) {
-    const questions = activeAssignment.questionsSnapshot || [];
+    const questions =
+      activeQuestions.length > 0
+        ? activeQuestions
+        : activeAssignment.questionsSnapshot || [];
     const currentQ = questions[currentQuestionIdx];
     const answeredCount = questions.filter((q) => Boolean(answersMap[q.id]?.trim())).length;
 
@@ -443,6 +487,16 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
               <span className="truncate">
                 {currentStudent.fullName} ({currentStudent.className})
               </span>
+              {(activeAssignment.shuffleQuestions !== false ||
+                activeAssignment.shuffleAnswers !== false) && (
+                <>
+                  <span>·</span>
+                  <span className="inline-flex items-center gap-1 text-emerald-300">
+                    <Shuffle className="w-3 h-3" />
+                    <span>Đã đảo đề &amp; đáp án ngẫu nhiên</span>
+                  </span>
+                </>
+              )}
             </div>
             <h2 className="text-sm sm:text-lg font-bold mt-0.5 leading-snug line-clamp-2">
               {activeAssignment.examTitle}
@@ -563,11 +617,13 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
                 {currentQ.questionType === 'multiple_choice' && currentQ.options && (
                   <div className="space-y-2.5 sm:space-y-3">
                     {currentQ.options.map((opt, oIdx) => {
-                      const letter = ['A', 'B', 'C', 'D'][oIdx] || 'A';
-                      const selected = answersMap[currentQ.id] === letter;
+                      const displayLetter = ['A', 'B', 'C', 'D'][oIdx] || 'A';
+                      const canonicalOriginalLetter =
+                        currentQ.optionOriginalLetters?.[oIdx] || displayLetter;
+                      const selected = answersMap[currentQ.id] === canonicalOriginalLetter;
                       return (
                         <label
-                          key={letter}
+                          key={`${currentQ.id}_${oIdx}`}
                           className={`p-3.5 sm:p-4 rounded-xl border-2 flex items-start sm:items-center gap-3 cursor-pointer transition-colors ${
                             selected
                               ? 'bg-blue-50 border-[#0D47A1] font-bold text-[#0D47A1] shadow-2xs'
@@ -579,12 +635,15 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
                             name={`q_${currentQ.id}`}
                             checked={selected}
                             onChange={() =>
-                              setAnswersMap((prev) => ({ ...prev, [currentQ.id]: letter }))
+                              setAnswersMap((prev) => ({
+                                ...prev,
+                                [currentQ.id]: canonicalOriginalLetter,
+                              }))
                             }
                             className="mt-1 sm:mt-0 w-4 h-4 accent-[#0D47A1] shrink-0"
                           />
                           <span className="text-sm sm:text-base leading-snug">
-                            <strong className="text-[#0D47A1] mr-1">{letter}.</strong> {opt}
+                            <strong className="text-[#0D47A1] mr-1">{displayLetter}.</strong> {opt}
                           </span>
                         </label>
                       );
@@ -595,17 +654,18 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
                 {currentQ.questionType === 'true_false' && currentQ.subItems && (
                   <div className="space-y-3">
                     <p className="text-xs sm:text-sm font-bold text-slate-600">
-                      Chọn Đúng hoặc Sai cho từng phát biểu a, b, c, d bên dưới:
+                      Chọn Đúng hoặc Sai cho từng phát biểu bên dưới:
                     </p>
-                    {currentQ.subItems.map((sub) => {
+                    {currentQ.subItems.map((sub, sIdx) => {
                       const currentVal = getTrueFalseValue(currentQ.id, sub.id);
+                      const displaySubLabel = ['a', 'b', 'c', 'd'][sIdx] || sub.id;
                       return (
                         <div
                           key={sub.id}
                           className="p-3.5 sm:p-4 rounded-xl bg-[#F4F8FC] border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                         >
                           <span className="text-sm sm:text-base font-medium text-[#17365D] leading-snug">
-                            <strong className="text-[#0D47A1]">{sub.id})</strong> {sub.text}
+                            <strong className="text-[#0D47A1]">{displaySubLabel})</strong> {sub.text}
                           </span>
                           <div className="grid grid-cols-2 sm:flex items-center gap-2 shrink-0">
                             <button
@@ -1148,6 +1208,14 @@ export const StudentExamPortal: React.FC<StudentExamPortalProps> = ({
                     <p className="text-xs text-slate-500 mt-0.5 tabular-nums">
                       Hạn nộp: {asg.dueTime.replace('T', ' ')}
                     </p>
+                    {(asg.shuffleQuestions !== false || asg.shuffleAnswers !== false) && (
+                      <p className="text-[11px] font-bold text-emerald-700 mt-1 flex items-center gap-1">
+                        <Shuffle className="w-3 h-3 shrink-0" />
+                        <span>
+                          Tự động đảo câu hỏi &amp; đảo đáp án ngẫu nhiên mỗi lượt làm bài
+                        </span>
+                      </p>
+                    )}
                   </div>
                   <div className="pt-2 border-t border-slate-200 flex justify-end">
                     <button

@@ -853,3 +853,94 @@ export function gradeObjectiveSubmission(
     perQuestionEarned,
   };
 }
+
+function fisherYatesShuffle<T>(arr: T[]): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function stripLeadingOptionPrefix(optText: string): string {
+  return String(optText ?? '')
+    .replace(/^[A-Da-d]\s*[.):-]\s*/, '')
+    .trim();
+}
+
+/**
+ * Generates a freshly shuffled copy of questions and/or answer choices for a student's attempt
+ * while preserving `optionOriginalLetters` (for multiple_choice) and `sub.id` (for true_false)
+ * so that automated grading against `ExamAnswerKey` remains 100% accurate.
+ */
+export function buildShuffledQuestionsForAttempt(
+  rawQuestions: SanitizedQuestion[],
+  shouldShuffleQuestions = true,
+  shouldShuffleAnswers = true
+): SanitizedQuestion[] {
+  const processedQuestions: SanitizedQuestion[] = (rawQuestions || []).map((q) => {
+    const cloned: SanitizedQuestion = {
+      ...q,
+      options: q.options ? [...q.options] : undefined,
+      optionOriginalLetters: q.optionOriginalLetters
+        ? [...q.optionOriginalLetters]
+        : q.options
+        ? q.options.map((_, idx) => ['A', 'B', 'C', 'D'][idx] || 'A')
+        : undefined,
+      subItems: q.subItems ? q.subItems.map((s) => ({ ...s })) : undefined,
+    };
+
+    if (shouldShuffleAnswers) {
+      if (
+        cloned.questionType === 'multiple_choice' &&
+        Array.isArray(cloned.options) &&
+        cloned.options.length > 1
+      ) {
+        const pairs = cloned.options.map((optText, idx) => ({
+          text: stripLeadingOptionPrefix(optText),
+          origLetter: cloned.optionOriginalLetters?.[idx] || ['A', 'B', 'C', 'D'][idx] || 'A',
+        }));
+        const shuffledPairs = fisherYatesShuffle(pairs);
+        cloned.options = shuffledPairs.map((p) => p.text);
+        cloned.optionOriginalLetters = shuffledPairs.map((p) => p.origLetter);
+      } else if (
+        cloned.questionType === 'true_false' &&
+        Array.isArray(cloned.subItems) &&
+        cloned.subItems.length > 1
+      ) {
+        cloned.subItems = fisherYatesShuffle(cloned.subItems);
+      }
+    }
+
+    return cloned;
+  });
+
+  if (!shouldShuffleQuestions) {
+    return processedQuestions;
+  }
+
+  // Shuffle questions within each exam section (Phần I, II, III, IV) so sections remain ordered
+  const sectionOrder: SanitizedQuestion['questionType'][] = [
+    'multiple_choice',
+    'true_false',
+    'short_answer',
+    'essay',
+  ];
+  const result: SanitizedQuestion[] = [];
+  sectionOrder.forEach((secType) => {
+    const inSec = processedQuestions.filter((q) => q.questionType === secType);
+    if (inSec.length > 0) {
+      result.push(...fisherYatesShuffle(inSec));
+    }
+  });
+
+  // Include any questions with unexpected types if present
+  const remaining = processedQuestions.filter((q) => !sectionOrder.includes(q.questionType));
+  if (remaining.length > 0) {
+    result.push(...fisherYatesShuffle(remaining));
+  }
+
+  return result;
+}
+

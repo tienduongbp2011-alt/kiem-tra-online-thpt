@@ -535,6 +535,36 @@ export default function App() {
         ...prev.filter((k) => k.examId !== id),
         keyRecord,
       ]);
+
+      // Đồng bộ cấu hình đảo câu hỏi, đảo đáp án và danh sách câu hỏi cho các bài giao trực tuyến liên kết với đề này
+      const linkedAsgs = cloudAssignments.filter((a) => a.examId === id);
+      if (linkedAsgs.length > 0) {
+        const updatedAsgs: Assignment[] = [];
+        for (const asg of linkedAsgs) {
+          const nextAsg: Assignment = {
+            ...asg,
+            examTitle: examRecord.title,
+            examCategory: examRecord.category,
+            shuffleQuestions: examRecord.shuffleQuestions !== false,
+            shuffleAnswers: examRecord.shuffleAnswers !== false,
+            questionsSnapshot: examRecord.questionsSanitized || asg.questionsSnapshot || [],
+            updatedAt: now,
+          };
+          await supabaseUpsertDoc(
+            'assignments',
+            nextAsg.id,
+            nextAsg as unknown as Record<string, unknown>
+          );
+          updatedAsgs.push(nextAsg);
+        }
+        setCloudAssignments((prev) =>
+          prev.map((a) => {
+            const match = updatedAsgs.find((u) => u.id === a.id);
+            return match || a;
+          })
+        );
+      }
+
       await recordAudit('Lưu đề kiểm tra & Ma trận', 'Đề kiểm tra', examRecord.title);
     } catch (err) {
       setAppAlert({

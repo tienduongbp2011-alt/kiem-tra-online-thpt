@@ -16,6 +16,7 @@ import {
   Upload,
   RefreshCw,
   Wand2,
+  Shuffle,
 } from 'lucide-react';
 import {
   Assignment,
@@ -32,6 +33,7 @@ import {
 } from '../types';
 import {
   buildAnswerKeyFromQuestions,
+  buildShuffledQuestionsForAttempt,
   sanitizeQuestionsForStudent,
 } from '../data/demoSeedData';
 import {
@@ -89,6 +91,8 @@ export const ExamsAndMatrixView: React.FC<ExamsAndMatrixViewProps> = ({
     status: 'open' as ExamStatus,
     selectedQuestionIds: [] as string[],
     matrixRows: [] as MatrixRow[],
+    shuffleQuestions: true,
+    shuffleAnswers: true,
     isDemo: false,
   });
 
@@ -105,6 +109,8 @@ export const ExamsAndMatrixView: React.FC<ExamsAndMatrixViewProps> = ({
     maxAttempts: 1,
     resultReleaseMode: 'immediate' as 'immediate' | 'after_due' | 'manual',
     showAnswersAfterSubmit: true,
+    shuffleQuestions: true,
+    shuffleAnswers: true,
   });
 
   // Teacher Answer Key Modal & Printable Preview Modal
@@ -354,6 +360,8 @@ export const ExamsAndMatrixView: React.FC<ExamsAndMatrixViewProps> = ({
             percentage: 100,
           },
         ],
+        shuffleQuestions: true,
+        shuffleAnswers: true,
         isDemo: false,
       });
       setShowExamModal(true);
@@ -397,6 +405,8 @@ export const ExamsAndMatrixView: React.FC<ExamsAndMatrixViewProps> = ({
           percentage: 100,
         },
       ],
+      shuffleQuestions: true,
+      shuffleAnswers: true,
       isDemo: false,
     });
     setShowExamModal(true);
@@ -416,6 +426,8 @@ export const ExamsAndMatrixView: React.FC<ExamsAndMatrixViewProps> = ({
       status: ex.status,
       selectedQuestionIds: (ex.questionsSanitized || []).map((q) => q.id),
       matrixRows: ex.matrixRows || [],
+      shuffleQuestions: ex.shuffleQuestions !== false,
+      shuffleAnswers: ex.shuffleAnswers !== false,
       isDemo: ex.isDemo,
     });
     setShowExamModal(true);
@@ -709,6 +721,8 @@ export const ExamsAndMatrixView: React.FC<ExamsAndMatrixViewProps> = ({
         matrixRows: examForm.matrixRows,
         questionsSanitized: sanitized,
         questionCount: sanitized.length,
+        shuffleQuestions: examForm.shuffleQuestions,
+        shuffleAnswers: examForm.shuffleAnswers,
         isDemo: examForm.isDemo,
       },
       {
@@ -724,8 +738,52 @@ export const ExamsAndMatrixView: React.FC<ExamsAndMatrixViewProps> = ({
     setBanner({
       type: 'success',
       text: editingExam
-        ? 'Đã cập nhật đề kiểm tra và khóa đáp án bảo mật.'
-        : 'Đã tạo đề kiểm tra mới thành công.',
+        ? 'Đã cập nhật đề kiểm tra, cấu hình đảo đề/đáp án và khóa đáp án bảo mật.'
+        : 'Đã tạo đề kiểm tra mới thành công (tự động đảo câu hỏi & đáp án khi làm bài).',
+    });
+  };
+
+  const handleQuickToggleExamShuffle = async (
+    ex: Exam,
+    field: 'shuffleQuestions' | 'shuffleAnswers'
+  ) => {
+    const existingKey = answerKeys.find((k) => k.examId === ex.id);
+    const currentVal = ex[field] !== false;
+    const nextVal = !currentVal;
+    const nextShuffleQuestions =
+      field === 'shuffleQuestions' ? nextVal : ex.shuffleQuestions !== false;
+    const nextShuffleAnswers =
+      field === 'shuffleAnswers' ? nextVal : ex.shuffleAnswers !== false;
+
+    await onSaveExam(
+      {
+        code: ex.code,
+        title: ex.title,
+        category: ex.category,
+        grade: ex.grade,
+        topic: ex.topic,
+        durationMinutes: ex.durationMinutes,
+        totalPoints: ex.totalPoints,
+        status: ex.status,
+        matrixRows: ex.matrixRows,
+        questionsSanitized: ex.questionsSanitized || [],
+        questionCount: ex.questionCount,
+        shuffleQuestions: nextShuffleQuestions,
+        shuffleAnswers: nextShuffleAnswers,
+        isDemo: ex.isDemo,
+      },
+      {
+        examId: ex.id,
+        answersMap: existingKey?.answersMap || {},
+        explanationsMap: existingKey?.explanationsMap || {},
+      },
+      ex.id
+    );
+    setBanner({
+      type: 'success',
+      text: `Đã cập nhật đề "${ex.code}": ${
+        field === 'shuffleQuestions' ? 'Tự động đảo câu hỏi' : 'Tự động đảo đáp án'
+      } -> ${nextVal ? 'BẬT' : 'TẮT'}.`,
     });
   };
 
@@ -743,8 +801,10 @@ export const ExamsAndMatrixView: React.FC<ExamsAndMatrixViewProps> = ({
         totalPoints: ex.totalPoints,
         status: 'draft',
         matrixRows: ex.matrixRows,
-        questionsSanitized: ex.questionsSanitized,
+        questionsSanitized: ex.questionsSanitized || [],
         questionCount: ex.questionCount,
+        shuffleQuestions: ex.shuffleQuestions !== false,
+        shuffleAnswers: ex.shuffleAnswers !== false,
         isDemo: ex.isDemo,
       },
       {
@@ -768,6 +828,8 @@ export const ExamsAndMatrixView: React.FC<ExamsAndMatrixViewProps> = ({
       maxAttempts: 2,
       resultReleaseMode: 'immediate',
       showAnswersAfterSubmit: true,
+      shuffleQuestions: ex.shuffleQuestions !== false,
+      shuffleAnswers: ex.shuffleAnswers !== false,
     });
   };
 
@@ -790,6 +852,8 @@ export const ExamsAndMatrixView: React.FC<ExamsAndMatrixViewProps> = ({
       maxAttempts: Number(assignForm.maxAttempts) || 1,
       resultReleaseMode: assignForm.resultReleaseMode,
       showAnswersAfterSubmit: assignForm.showAnswersAfterSubmit,
+      shuffleQuestions: assignForm.shuffleQuestions,
+      shuffleAnswers: assignForm.shuffleAnswers,
       status: 'open',
       questionsSnapshot: assigningExam.questionsSanitized || [],
       isDemo: assigningExam.isDemo,
@@ -921,6 +985,41 @@ export const ExamsAndMatrixView: React.FC<ExamsAndMatrixViewProps> = ({
                     Số câu hỏi: <strong className="tabular-nums">{ex.questionCount} câu</strong> ·
                     Tổng điểm: <strong className="tabular-nums">{ex.totalPoints} điểm</strong>
                   </p>
+
+                  {/* Shuffle Questions & Answers Status / Quick Toggle Strip */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickToggleExamShuffle(ex, 'shuffleQuestions')}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-bold flex items-center gap-1 border cursor-pointer transition-colors ${
+                        ex.shuffleQuestions !== false
+                          ? 'bg-blue-50 text-[#0D47A1] border-blue-200 hover:bg-blue-100'
+                          : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                      }`}
+                      title="Nhấn để Bật/Tắt tự động đảo thứ tự câu hỏi mỗi lần học sinh làm bài"
+                    >
+                      <Shuffle className="w-3 h-3" />
+                      <span>
+                        Đảo câu hỏi: {ex.shuffleQuestions !== false ? 'Tự động BẬT' : 'Tắt'}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickToggleExamShuffle(ex, 'shuffleAnswers')}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-bold flex items-center gap-1 border cursor-pointer transition-colors ${
+                        ex.shuffleAnswers !== false
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                          : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                      }`}
+                      title="Nhấn để Bật/Tắt tự động đảo thứ tự đáp án (A, B, C, D) mỗi lần học sinh làm bài"
+                    >
+                      <Shuffle className="w-3 h-3" />
+                      <span>
+                        Đảo đáp án: {ex.shuffleAnswers !== false ? 'Tự động BẬT' : 'Tắt'}
+                      </span>
+                    </button>
+                  </div>
+
                   {assignedClasses.length > 0 && (
                     <p className="text-xs text-[#168BFA] font-semibold">
                       Đã giao cho: {assignedClasses.map((a) => a.className).join(', ')}
@@ -1103,6 +1202,47 @@ export const ExamsAndMatrixView: React.FC<ExamsAndMatrixViewProps> = ({
                   }
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
                 />
+              </div>
+            </div>
+
+            {/* Automatic Shuffle Questions & Answers Configuration */}
+            <div className="p-3.5 rounded-xl bg-emerald-50/80 border border-emerald-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-2.5">
+                <div className="p-2 rounded-lg bg-emerald-600 text-white shrink-0 mt-0.5">
+                  <Shuffle className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs sm:text-sm font-bold text-emerald-950">
+                    Chế độ Tự động Đảo câu hỏi &amp; Đảo đáp án mỗi lần làm bài
+                  </h4>
+                  <p className="text-[11px] sm:text-xs text-emerald-800 mt-0.5">
+                    Mỗi lượt học sinh vào làm bài sẽ nhận một thứ tự câu hỏi và thứ tự đáp án A, B, C, D ngẫu nhiên khác nhau (hệ thống tự động đối chiếu đáp án gốc để chấm điểm chính xác 100%).
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-4 shrink-0">
+                <label className="flex items-center gap-2 text-xs font-bold text-emerald-950 cursor-pointer bg-white px-3 py-2 rounded-lg border border-emerald-300">
+                  <input
+                    type="checkbox"
+                    checked={examForm.shuffleQuestions}
+                    onChange={(e) =>
+                      setExamForm({ ...examForm, shuffleQuestions: e.target.checked })
+                    }
+                    className="w-4 h-4 accent-[#0D47A1]"
+                  />
+                  <span>Tự động đảo câu hỏi</span>
+                </label>
+                <label className="flex items-center gap-2 text-xs font-bold text-emerald-950 cursor-pointer bg-white px-3 py-2 rounded-lg border border-emerald-300">
+                  <input
+                    type="checkbox"
+                    checked={examForm.shuffleAnswers}
+                    onChange={(e) =>
+                      setExamForm({ ...examForm, shuffleAnswers: e.target.checked })
+                    }
+                    className="w-4 h-4 accent-[#0D47A1]"
+                  />
+                  <span>Tự động đảo đáp án</span>
+                </label>
               </div>
             </div>
 
@@ -1784,6 +1924,33 @@ export const ExamsAndMatrixView: React.FC<ExamsAndMatrixViewProps> = ({
                 </select>
               </div>
 
+              <div className="p-3 rounded-xl bg-blue-50/80 border border-blue-200 space-y-2">
+                <p className="text-xs font-bold text-[#0D47A1] flex items-center gap-1.5">
+                  <Shuffle className="w-3.5 h-3.5" />
+                  <span>Cấu hình chống quay cóp mỗi lần làm bài:</span>
+                </p>
+                <label className="flex items-center gap-2 text-xs font-bold text-[#17365D] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={assignForm.shuffleQuestions}
+                    onChange={(e) =>
+                      setAssignForm({ ...assignForm, shuffleQuestions: e.target.checked })
+                    }
+                  />
+                  <span>Tự động đảo thứ tự câu hỏi mỗi lần học sinh vào làm bài</span>
+                </label>
+                <label className="flex items-center gap-2 text-xs font-bold text-[#17365D] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={assignForm.shuffleAnswers}
+                    onChange={(e) =>
+                      setAssignForm({ ...assignForm, shuffleAnswers: e.target.checked })
+                    }
+                  />
+                  <span>Tự động đảo thứ tự các đáp án (A, B, C, D và ý Đúng/Sai) mỗi lần làm bài</span>
+                </label>
+              </div>
+
               <label className="flex items-center gap-2 text-xs font-bold text-[#17365D] cursor-pointer">
                 <input
                   type="checkbox"
@@ -1865,7 +2032,28 @@ export const ExamsAndMatrixView: React.FC<ExamsAndMatrixViewProps> = ({
               <span className="text-xs font-bold text-slate-500">
                 Bản xem trước định dạng in giấy A4
               </span>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPrintableExam((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            questionsSanitized: buildShuffledQuestionsForAttempt(
+                              prev.questionsSanitized || [],
+                              true,
+                              true
+                            ),
+                          }
+                        : null
+                    )
+                  }
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <Shuffle className="w-3.5 h-3.5" />
+                  <span>Đảo câu hỏi &amp; đáp án bản in</span>
+                </button>
                 <button
                   onClick={() => window.print()}
                   className="px-3 py-1.5 bg-[#0D47A1] text-white rounded text-xs font-bold flex items-center gap-1 cursor-pointer"

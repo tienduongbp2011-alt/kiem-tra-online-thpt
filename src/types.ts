@@ -135,6 +135,7 @@ export interface SanitizedQuestion {
   codeSnippet?: string;
   imageUrl?: string;
   options?: string[];
+  optionOriginalLetters?: string[];
   subItems?: SanitizedTrueFalseSubItem[];
   points: number;
 }
@@ -165,6 +166,8 @@ export interface Exam {
   matrixRows?: MatrixRow[];
   questionsSanitized?: SanitizedQuestion[];
   questionCount: number;
+  shuffleQuestions?: boolean;
+  shuffleAnswers?: boolean;
   isDemo: boolean;
   ownerId: string;
   createdAt: string;
@@ -194,6 +197,8 @@ export interface Assignment {
   maxAttempts: number;
   resultReleaseMode: 'immediate' | 'after_due' | 'manual';
   showAnswersAfterSubmit: boolean;
+  shuffleQuestions?: boolean;
+  shuffleAnswers?: boolean;
   status: 'open' | 'closed';
   questionsSnapshot?: SanitizedQuestion[];
   isDemo: boolean;
